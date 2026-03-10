@@ -1,6 +1,7 @@
 """
-Calorie Tracker Bot — main entry point
-Phase 1: Foundation (hello world + command scaffold)
+Calorie Tracker Bot — main entry point.
+
+Wires up handlers and starts polling. Business logic lives in handlers/ and services/.
 """
 
 import logging
@@ -16,6 +17,19 @@ from telegram.ext import (
     ContextTypes,
 )
 
+from handlers.food import handle_text, handle_photo, cmd_today, cmd_history
+from services.database import init_db
+
+def _build_allowlist() -> filters.BaseFilter:
+    """Return a user filter from ALLOWED_USER_IDS env var, or allow all if unset."""
+    raw = os.getenv("ALLOWED_USER_IDS", "").strip()
+    if not raw:
+        logger.warning("ALLOWED_USER_IDS is not set — bot is open to all users")
+        return filters.ALL
+    ids = [int(uid.strip()) for uid in raw.split(",") if uid.strip()]
+    logger.info("Allowlist active: %s", ids)
+    return filters.User(user_id=ids)
+
 load_dotenv()
 
 logging.basicConfig(
@@ -26,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Command handlers
+# Inline commands (no external dependencies)
 # ---------------------------------------------------------------------------
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -48,63 +62,38 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await cmd_start(update, context)
 
 
-async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Show today's calorie total. (Stub — Phase 3)"""
-    await update.message.reply_text(
-        "📊 Today's log coming in Phase 3! Stay tuned."
-    )
-
-
-async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Show 7-day history. (Stub — Phase 3)"""
-    await update.message.reply_text(
-        "📅 History view coming in Phase 3! Stay tuned."
-    )
-
-
-# ---------------------------------------------------------------------------
-# Message handlers
-# ---------------------------------------------------------------------------
-
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle text descriptions of food. (Stub — Phase 2)"""
-    user_text = update.message.text
-    logger.info("Text from user %s: %s", update.effective_user.id, user_text)
-    await update.message.reply_text(
-        f"Got it! 🍽️ You said:\n\n_{user_text}_\n\n"
-        "Calorie estimation coming in Phase 2!",
-        parse_mode="Markdown",
-    )
-
-
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle food photos. (Stub — Phase 2)"""
-    logger.info("Photo from user %s", update.effective_user.id)
-    await update.message.reply_text(
-        "📸 Got your photo! Calorie estimation from images coming in Phase 2!"
-    )
-
-
 # ---------------------------------------------------------------------------
 # App bootstrap
 # ---------------------------------------------------------------------------
+
+async def post_init(application: Application) -> None:
+    await init_db()
+    logger.info("Database initialised.")
+
 
 def main() -> None:
     token = os.getenv("BOT_TOKEN")
     if not token:
         raise RuntimeError("BOT_TOKEN is not set in .env")
 
-    app = Application.builder().token(token).build()
+    app = (
+        Application.builder()
+        .token(token)
+        .post_init(post_init)
+        .build()
+    )
+
+    allowed = _build_allowlist()
 
     # Commands
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("help", cmd_help))
-    app.add_handler(CommandHandler("today", cmd_today))
-    app.add_handler(CommandHandler("history", cmd_history))
+    app.add_handler(CommandHandler("start",   cmd_start,   filters=allowed))
+    app.add_handler(CommandHandler("help",    cmd_help,    filters=allowed))
+    app.add_handler(CommandHandler("today",   cmd_today,   filters=allowed))
+    app.add_handler(CommandHandler("history", cmd_history, filters=allowed))
 
     # Messages
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & allowed, handle_text))
+    app.add_handler(MessageHandler(filters.PHOTO & allowed, handle_photo))
 
     logger.info("Bot is running... (polling)")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
