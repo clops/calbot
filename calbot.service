@@ -1,0 +1,22 @@
+[Unit]
+Description=CalBot Telegram calorie tracker
+After=network.target
+
+[Service]
+User=calbot
+Group=calbot
+WorkingDirectory=/opt/calbot
+EnvironmentFile=/opt/calbot/.env
+ExecStart=/opt/calbot/venv/bin/python main.py
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/calbot/data
+
+[Install]
+WantedBy=multi-user.target
