@@ -17,7 +17,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from handlers.food import handle_text, handle_photo, cmd_today, cmd_history
+from handlers.food import handle_text, handle_photo, cmd_today, cmd_history, cmd_cancel
 from services.database import init_db
 
 def _build_allowlist() -> filters.BaseFilter:
@@ -54,6 +54,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Commands:\n"
         "/today — see today's total\n"
         "/history — last 7 days\n"
+        "/cancel — cancel a pending question\n"
         "/help — show this message"
     )
 
@@ -90,6 +91,7 @@ def main() -> None:
     app.add_handler(CommandHandler("help",    cmd_help,    filters=allowed))
     app.add_handler(CommandHandler("today",   cmd_today,   filters=allowed))
     app.add_handler(CommandHandler("history", cmd_history, filters=allowed))
+    app.add_handler(CommandHandler("cancel",  cmd_cancel,  filters=allowed))
 
     # Messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & allowed, handle_text))

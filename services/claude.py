@@ -9,6 +9,7 @@ conversation history is sent again so Claude has context.
 
 import json
 import os
+import re
 from dataclasses import dataclass
 
 from anthropic import AsyncAnthropic
@@ -27,15 +28,11 @@ _conversations: dict[int, list[dict]] = {}
 
 _SYSTEM_PROMPT = """\
 You are a calorie estimation assistant. When the user describes food or sends a photo,
-estimate its calorie content and respond ONLY with valid JSON in this exact format:
-{
-  "food_items": ["item 1", "item 2"],
-  "calories_estimate": 450,
-  "confidence": 0.8,
-  "clarifying_question": null
-}
-If you need more information to make a reasonable estimate, set clarifying_question
-to a short, specific question and set calories_estimate to null.
+estimate its calorie content and respond ONLY with raw JSON — no markdown, no code fences,
+no explanation. Use exactly this format:
+{"food_items": ["item 1", "item 2"], "calories_estimate": 450, "confidence": 0.8, "clarifying_question": null}
+If you need more information to make a reasonable estimate, set clarifying_question to a
+short specific question and set calories_estimate to null.
 confidence is a float between 0 and 1.
 """
 
@@ -49,11 +46,16 @@ class CalorieEstimate:
 
 
 def _parse_response(text: str) -> CalorieEstimate:
-    """Parse Claude's JSON response into a CalorieEstimate."""
-    data = json.loads(text)
+    """Parse Claude's JSON response into a CalorieEstimate.
+
+    Strips markdown code fences defensively in case Claude ignores the prompt.
+    """
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
+    data = json.loads(cleaned)
+    raw_calories = data.get("calories_estimate")
     return CalorieEstimate(
         food_items=data.get("food_items", []),
-        calories_estimate=data.get("calories_estimate"),
+        calories_estimate=int(raw_calories) if raw_calories is not None else None,
         confidence=data.get("confidence", 0.0),
         clarifying_question=data.get("clarifying_question"),
     )
@@ -62,7 +64,7 @@ def _parse_response(text: str) -> CalorieEstimate:
 async def _call_claude(user_id: int) -> CalorieEstimate:
     """Send the current conversation history for user_id to Claude and return the estimate."""
     response = await _get_client().messages.create(
-        model="claude-opus-4-6",
+        model="claude-haiku-4-5-20251001",
         max_tokens=512,
         system=_SYSTEM_PROMPT,
         messages=_conversations[user_id],

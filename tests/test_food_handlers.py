@@ -280,3 +280,69 @@ class TestCmdHistory:
 
         reply = update.message.reply_text.call_args.args[0]
         assert "no" in reply.lower() or "nothing" in reply.lower()
+
+
+# ---------------------------------------------------------------------------
+# Error handling
+# ---------------------------------------------------------------------------
+
+class TestErrorHandling:
+    @pytest.fixture(autouse=True)
+    def patches(self):
+        with (
+            patch("handlers.food.claude.estimate_from_text", new_callable=AsyncMock) as est,
+            patch("handlers.food.database.log_meal", new_callable=AsyncMock) as log,
+            patch("handlers.food.claude.clear_conversation") as clr,
+        ):
+            self.estimate = est
+            self.log_meal = log
+            self.clear = clr
+            yield
+
+    async def test_handle_text_replies_on_claude_error(self):
+        from handlers.food import handle_text
+
+        self.estimate.side_effect = Exception("API error")
+        update = _make_update(text="a burger")
+        await handle_text(update, _make_context())
+
+        self.log_meal.assert_not_awaited()
+        calls = [c.args[0] for c in update.message.reply_text.call_args_list]
+        assert any("wrong" in c.lower() or "error" in c.lower() for c in calls)
+
+    async def test_handle_text_clears_conversation_on_error(self):
+        from handlers.food import handle_text
+
+        self.estimate.side_effect = Exception("API error")
+        await handle_text(_make_update(text="a burger"), _make_context())
+        self.clear.assert_called_once_with(1)
+
+
+# ---------------------------------------------------------------------------
+# cmd_cancel
+# ---------------------------------------------------------------------------
+
+class TestCmdCancel:
+    async def test_cancel_clears_active_conversation(self):
+        from handlers.food import cmd_cancel
+
+        with (
+            patch("handlers.food.claude.has_active_conversation", return_value=True),
+            patch("handlers.food.claude.clear_conversation") as clr,
+        ):
+            update = _make_update()
+            await cmd_cancel(update, _make_context())
+
+            clr.assert_called_once_with(1)
+            reply = update.message.reply_text.call_args.args[0]
+            assert "cancel" in reply.lower()
+
+    async def test_cancel_noop_when_no_conversation(self):
+        from handlers.food import cmd_cancel
+
+        with patch("handlers.food.claude.has_active_conversation", return_value=False):
+            update = _make_update()
+            await cmd_cancel(update, _make_context())
+
+            reply = update.message.reply_text.call_args.args[0]
+            assert "nothing" in reply.lower()

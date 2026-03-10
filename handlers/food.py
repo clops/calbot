@@ -38,7 +38,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     await update.message.reply_text("⏳ Estimating calories...")
 
-    estimate = await claude.estimate_from_text(user_id, text)
+    try:
+        estimate = await claude.estimate_from_text(user_id, text)
+    except Exception:
+        logger.exception("Claude call failed for user %d", user_id)
+        claude.clear_conversation(user_id)
+        await update.message.reply_text("Something went wrong — please try again.")
+        return
 
     if estimate.clarifying_question:
         await update.message.reply_text(estimate.clarifying_question)
@@ -74,7 +80,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     image_b64 = await photo_to_base64(photo, context.bot)
     caption = update.message.caption
 
-    estimate = await claude.estimate_from_photo(user_id, image_b64, caption)
+    try:
+        estimate = await claude.estimate_from_photo(user_id, image_b64, caption)
+    except Exception:
+        logger.exception("Claude call failed for user %d", user_id)
+        claude.clear_conversation(user_id)
+        await update.message.reply_text("Something went wrong — please try again.")
+        return
 
     if estimate.clarifying_question:
         await update.message.reply_text(estimate.clarifying_question)
@@ -93,6 +105,16 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"~{estimate.calories_estimate} kcal "
         f"(confidence: {estimate.confidence:.0%})"
     )
+
+
+async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Abort any in-progress clarifying question exchange."""
+    user_id = update.effective_user.id
+    if claude.has_active_conversation(user_id):
+        claude.clear_conversation(user_id)
+        await update.message.reply_text("Cancelled. Send a new food description whenever you're ready.")
+    else:
+        await update.message.reply_text("Nothing to cancel.")
 
 
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

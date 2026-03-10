@@ -146,3 +146,31 @@ async def test_clear_conversation_removes_state(mock_create):
 def test_clear_conversation_noop_for_unknown_user():
     # Should not raise
     clear_conversation(999)
+
+
+# ---------------------------------------------------------------------------
+# _parse_response — markdown fence stripping
+# ---------------------------------------------------------------------------
+
+def test_parse_response_strips_json_fences():
+    from services.claude import _parse_response
+    text = '```json\n{"food_items": ["apple"], "calories_estimate": 80, "confidence": 0.9, "clarifying_question": null}\n```'
+    result = _parse_response(text)
+    assert result.food_items == ["apple"]
+    assert result.calories_estimate == 80
+
+
+def test_parse_response_strips_plain_fences():
+    from services.claude import _parse_response
+    text = '```\n{"food_items": ["rice"], "calories_estimate": 200, "confidence": 0.8, "clarifying_question": null}\n```'
+    result = _parse_response(text)
+    assert result.food_items == ["rice"]
+    assert result.calories_estimate == 200
+
+
+def test_parse_response_coerces_float_calories():
+    from services.claude import _parse_response
+    text = '{"food_items": ["pasta"], "calories_estimate": 350.0, "confidence": 0.85, "clarifying_question": null}'
+    result = _parse_response(text)
+    assert result.calories_estimate == 350
+    assert isinstance(result.calories_estimate, int)
