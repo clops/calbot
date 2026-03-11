@@ -1,15 +1,17 @@
 # Calbot 🍽️
 
-A personal Telegram calorie tracker powered by Claude AI. Send a text description or a photo of your food — the bot estimates the calories and logs them. Ask it what you've eaten today or over the last week.
+A personal Telegram calorie tracker powered by Claude AI. Send a text description or a photo of your food — the bot estimates calories and macronutrients (protein, fat, carbs) and logs them. Ask it what you've eaten today or over the last week.
 
 ## Features
 
 - **Text & photo input** — describe your meal or snap a photo
+- **Calories + macros** — estimates kcal, protein, fat, and carbohydrates per meal
 - **Claude vision** — photo analysis via Claude Haiku
 - **Clarifying questions** — when Claude needs more info it asks; `/cancel` to abort
 - **Persistent log** — SQLite, survives restarts
-- **`/today`** — today's meals and running total
+- **`/today`** — today's meals with calorie and macro totals
 - **`/history`** — 7-day summary grouped by date
+- **`/undo`** — remove the last logged meal
 - **Allowlist** — only authorised Telegram user IDs can interact
 - **Systemd service** — auto-restarts on crash, survives reboots
 - **CI/CD** — pytest runs on every push; deploys to production only if tests pass
@@ -37,7 +39,7 @@ calbot/
 │   └── database.py          # SQLite CRUD
 ├── utils/
 │   └── photos.py            # photo download → base64
-├── tests/                   # 50 pytest tests, fully mocked
+├── tests/                   # 62 pytest tests, fully mocked
 └── calbot.service           # systemd unit file
 ```
 

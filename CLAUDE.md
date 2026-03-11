@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Calbot** is a Telegram calorie tracker bot. Users send food descriptions or photos; the bot estimates calories using Claude AI and logs them to SQLite. Phases 1–4 are complete and the bot is running in production on `ether.emind.at`.
+**Calbot** is a Telegram calorie and macronutrient tracker bot. Users send food descriptions or photos; the bot estimates calories and macros (protein, fat, carbs) using Claude AI and logs them to SQLite. The bot is running in production on `ether.emind.at`.
 
 ## Environment Setup
 
@@ -37,7 +37,7 @@ source venv/bin/activate
 pytest
 ```
 
-50 tests, no API keys or network access required (everything is mocked).
+62 tests, no API keys or network access required (everything is mocked).
 
 ## Architecture
 
@@ -45,10 +45,10 @@ pytest
 calbot/
 ├── main.py                  # entry point: wiring, allowlist, keyboard, polling
 ├── handlers/
-│   └── food.py              # Telegram handlers (text, photo, today, history, cancel)
+│   └── food.py              # Telegram handlers (text, photo, today, history, cancel, undo)
 ├── services/
 │   ├── claude.py            # Claude API + per-user conversation state
-│   └── database.py          # aiosqlite CRUD (init_db, log_meal, get_today, get_history)
+│   └── database.py          # aiosqlite CRUD (init_db, log_meal, get_today, get_history, delete_last_meal)
 └── utils/
     └── photos.py            # Telegram photo download → base64
 ```
@@ -63,21 +63,26 @@ calbot/
 
 ### Claude response format
 ```json
-{"food_items": ["item"], "calories_estimate": 450, "confidence": 0.8, "clarifying_question": null}
+{"food_items": ["item"], "calories_estimate": 450, "proteins_g": 20, "fats_g": 15, "carbohydrates_g": 60, "confidence": 0.8, "clarifying_question": null}
 ```
 If `clarifying_question` is set, the handler replies with the question and returns without logging.
+Macro fields (`proteins_g`, `fats_g`, `carbohydrates_g`) are `int | None` — parsed with `.get()` so missing fields degrade gracefully to `None`.
 
 ### Database schema
 ```sql
 CREATE TABLE meals (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id     INTEGER NOT NULL,
-    timestamp   TEXT    NOT NULL,   -- ISO 8601 UTC
-    description TEXT    NOT NULL,
-    calories    INTEGER NOT NULL,
-    input_type  TEXT    NOT NULL    -- "text" or "photo"
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,
+    timestamp     TEXT    NOT NULL,   -- ISO 8601 UTC
+    description   TEXT    NOT NULL,
+    calories      INTEGER NOT NULL,
+    input_type    TEXT    NOT NULL,   -- "text" or "photo"
+    proteins      INTEGER,            -- grams, NULL for rows logged before macros were added
+    fats          INTEGER,            -- grams
+    carbohydrates INTEGER             -- grams
 );
 ```
+Macro columns are added automatically by `init_db()` via `ALTER TABLE ADD COLUMN` if missing (migration-safe for existing production data).
 
 ## Deployment
 
