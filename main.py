@@ -8,7 +8,7 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -43,6 +43,13 @@ logger = logging.getLogger(__name__)
 # Inline commands (no external dependencies)
 # ---------------------------------------------------------------------------
 
+MAIN_KEYBOARD = ReplyKeyboardMarkup(
+    [[KeyboardButton("📊 Today"), KeyboardButton("📅 History")]],
+    resize_keyboard=True,
+    is_persistent=True,
+)
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Welcome message."""
     await update.message.reply_text(
@@ -55,8 +62,18 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/today — see today's total\n"
         "/history — last 7 days\n"
         "/cancel — cancel a pending question\n"
-        "/help — show this message"
+        "/help — show this message",
+        reply_markup=MAIN_KEYBOARD,
     )
+
+
+async def handle_keyboard_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Route persistent keyboard button taps to their command handlers."""
+    text = update.message.text
+    if text == "📊 Today":
+        await cmd_today(update, context)
+    elif text == "📅 History":
+        await cmd_history(update, context)
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -93,8 +110,12 @@ def main() -> None:
     app.add_handler(CommandHandler("history", cmd_history, filters=allowed))
     app.add_handler(CommandHandler("cancel",  cmd_cancel,  filters=allowed))
 
+    # Keyboard buttons (must be before the general text handler)
+    button_filter = filters.Text(["📊 Today", "📅 History"]) & allowed
+    app.add_handler(MessageHandler(button_filter, handle_keyboard_buttons))
+
     # Messages
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & allowed, handle_text))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Text(["📊 Today", "📅 History"]) & allowed, handle_text))
     app.add_handler(MessageHandler(filters.PHOTO & allowed, handle_photo))
 
     logger.info("Bot is running... (polling)")
