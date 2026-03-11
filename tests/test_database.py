@@ -153,3 +153,48 @@ async def test_delete_last_meal_only_affects_own_user(tmp_db):
 
     assert await db_service.get_today(1) == []
     assert len(await db_service.get_today(2)) == 1
+
+
+# ---------------------------------------------------------------------------
+# macronutrients
+# ---------------------------------------------------------------------------
+
+async def test_log_meal_stores_macros(tmp_db):
+    await db_service.init_db()
+    await db_service.log_meal(1, "chicken", 165, "text", proteins=31, fats=4, carbohydrates=0)
+
+    meals = await db_service.get_today(1)
+    assert meals[0]["proteins"] == 31
+    assert meals[0]["fats"] == 4
+    assert meals[0]["carbohydrates"] == 0
+
+
+async def test_log_meal_macros_default_to_none(tmp_db):
+    await db_service.init_db()
+    await db_service.log_meal(1, "mystery food", 300, "text")
+
+    meals = await db_service.get_today(1)
+    assert meals[0]["proteins"] is None
+    assert meals[0]["fats"] is None
+    assert meals[0]["carbohydrates"] is None
+
+
+async def test_init_db_migration_adds_macro_columns(tmp_db):
+    """Existing DB without macro columns should gain them after init_db."""
+    import aiosqlite
+
+    # Create table WITHOUT macro columns (simulates old production DB)
+    async with aiosqlite.connect(db_service.DB_PATH) as db:
+        await db.execute(
+            "CREATE TABLE meals (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "user_id INTEGER NOT NULL, timestamp TEXT NOT NULL, "
+            "description TEXT NOT NULL, calories INTEGER NOT NULL, input_type TEXT NOT NULL)"
+        )
+        await db.commit()
+
+    await db_service.init_db()
+
+    # Should now be able to insert and read macros
+    await db_service.log_meal(1, "egg", 70, "text", proteins=6, fats=5, carbohydrates=0)
+    meals = await db_service.get_today(1)
+    assert meals[0]["proteins"] == 6

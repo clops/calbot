@@ -27,12 +27,12 @@ def _get_client() -> AsyncAnthropic:
 _conversations: dict[int, list[dict]] = {}
 
 _SYSTEM_PROMPT = """\
-You are a calorie estimation assistant. When the user describes food or sends a photo,
-estimate its calorie content and respond ONLY with raw JSON — no markdown, no code fences,
+You are a calorie and macronutrient estimation assistant. When the user describes food or sends a photo,
+estimate its calorie and macronutrient content and respond ONLY with raw JSON — no markdown, no code fences,
 no explanation. Use exactly this format:
-{"food_items": ["item 1", "item 2"], "calories_estimate": 450, "confidence": 0.8, "clarifying_question": null}
+{"food_items": ["item 1", "item 2"], "calories_estimate": 450, "proteins_g": 20, "fats_g": 15, "carbohydrates_g": 60, "confidence": 0.8, "clarifying_question": null}
 If you need more information to make a reasonable estimate, set clarifying_question to a
-short specific question and set calories_estimate to null.
+short specific question and set calories_estimate, proteins_g, fats_g, carbohydrates_g to null.
 confidence is a float between 0 and 1.
 """
 
@@ -41,6 +41,9 @@ confidence is a float between 0 and 1.
 class CalorieEstimate:
     food_items: list[str]
     calories_estimate: int | None
+    proteins_g: int | None
+    fats_g: int | None
+    carbohydrates_g: int | None
     confidence: float
     clarifying_question: str | None
 
@@ -53,9 +56,16 @@ def _parse_response(text: str) -> CalorieEstimate:
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
     data = json.loads(cleaned)
     raw_calories = data.get("calories_estimate")
+
+    def _to_int(val):
+        return int(val) if val is not None else None
+
     return CalorieEstimate(
         food_items=data.get("food_items", []),
-        calories_estimate=int(raw_calories) if raw_calories is not None else None,
+        calories_estimate=_to_int(raw_calories),
+        proteins_g=_to_int(data.get("proteins_g")),
+        fats_g=_to_int(data.get("fats_g")),
+        carbohydrates_g=_to_int(data.get("carbohydrates_g")),
         confidence=data.get("confidence", 0.0),
         clarifying_question=data.get("clarifying_question"),
     )

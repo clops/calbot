@@ -28,10 +28,14 @@ def _make_context(bot=None):
     return ctx
 
 
-def _estimate(food_items=("banana",), calories=90, confidence=0.9, clarifying_question=None):
+def _estimate(food_items=("banana",), calories=90, confidence=0.9, clarifying_question=None,
+              proteins_g=10, fats_g=3, carbohydrates_g=20):
     return CalorieEstimate(
         food_items=list(food_items),
         calories_estimate=calories,
+        proteins_g=proteins_g,
+        fats_g=fats_g,
+        carbohydrates_g=carbohydrates_g,
         confidence=confidence,
         clarifying_question=clarifying_question,
     )
@@ -99,6 +103,30 @@ class TestHandleText:
         assert call_kwargs["user_id"] == 1
         assert call_kwargs["calories"] == 90
         assert call_kwargs["input_type"] == "text"
+        assert call_kwargs["proteins"] == 10
+        assert call_kwargs["fats"] == 3
+        assert call_kwargs["carbohydrates"] == 20
+
+    async def test_confirmation_reply_contains_macros(self):
+        from handlers.food import handle_text
+
+        self.estimate.return_value = _estimate(proteins_g=25, fats_g=8, carbohydrates_g=45)
+        update = _make_update(text="chicken and rice")
+        await handle_text(update, _make_context())
+
+        calls = [c.args[0] for c in update.message.reply_text.call_args_list]
+        assert any("25g" in c and "8g" in c and "45g" in c for c in calls)
+
+    async def test_confirmation_reply_no_macro_string_when_none(self):
+        from handlers.food import handle_text
+
+        self.estimate.return_value = _estimate(proteins_g=None, fats_g=None, carbohydrates_g=None)
+        update = _make_update(text="something")
+        await handle_text(update, _make_context())
+
+        calls = [c.args[0] for c in update.message.reply_text.call_args_list]
+        # Should not contain macro separator
+        assert all("|" not in c for c in calls)
 
     async def test_clears_conversation_after_logging(self):
         from handlers.food import handle_text

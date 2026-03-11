@@ -55,12 +55,18 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         description=", ".join(estimate.food_items) or text,
         calories=estimate.calories_estimate,
         input_type="text",
+        proteins=estimate.proteins_g,
+        fats=estimate.fats_g,
+        carbohydrates=estimate.carbohydrates_g,
     )
     claude.clear_conversation(user_id)
 
+    macro_str = ""
+    if estimate.proteins_g is not None:
+        macro_str = f" | P: {estimate.proteins_g}g  F: {estimate.fats_g}g  C: {estimate.carbohydrates_g}g"
     await update.message.reply_text(
         f"✅ Logged! {', '.join(estimate.food_items)} — "
-        f"~{estimate.calories_estimate} kcal "
+        f"~{estimate.calories_estimate} kcal{macro_str} "
         f"(confidence: {estimate.confidence:.0%})"
     )
 
@@ -97,12 +103,18 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         description=", ".join(estimate.food_items) or "photo",
         calories=estimate.calories_estimate,
         input_type="photo",
+        proteins=estimate.proteins_g,
+        fats=estimate.fats_g,
+        carbohydrates=estimate.carbohydrates_g,
     )
     claude.clear_conversation(user_id)
 
+    macro_str = ""
+    if estimate.proteins_g is not None:
+        macro_str = f" | P: {estimate.proteins_g}g  F: {estimate.fats_g}g  C: {estimate.carbohydrates_g}g"
     await update.message.reply_text(
         f"✅ Logged! {', '.join(estimate.food_items)} — "
-        f"~{estimate.calories_estimate} kcal "
+        f"~{estimate.calories_estimate} kcal{macro_str} "
         f"(confidence: {estimate.confidence:.0%})"
     )
 
@@ -140,8 +152,16 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     total = sum(m["calories"] for m in meals)
     lines = [f"• {m['description']} — {m['calories']} kcal" for m in meals]
+
+    footer = f"*Total: {total} kcal*"
+    if any(m.get("proteins") is not None for m in meals):
+        p = sum(m.get("proteins") or 0 for m in meals)
+        f_ = sum(m.get("fats") or 0 for m in meals)
+        c = sum(m.get("carbohydrates") or 0 for m in meals)
+        footer += f"  |  P: {p}g  F: {f_}g  C: {c}g"
+
     await update.message.reply_text(
-        "📊 *Today's log:*\n\n" + "\n".join(lines) + f"\n\n*Total: {total} kcal*",
+        "📊 *Today's log:*\n\n" + "\n".join(lines) + f"\n\n{footer}",
         parse_mode="Markdown",
     )
 

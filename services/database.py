@@ -30,11 +30,18 @@ async def init_db() -> None:
     """Create the database and meals table if they don't exist.
 
     Call once at bot startup (e.g. via Application post_init hook).
-    Creates the data/ directory if needed.
+    Creates the data/ directory if needed. Also migrates existing databases
+    to add macro columns if absent.
     """
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(_CREATE_TABLE)
+        # Migrate: add macro columns to existing databases
+        async with db.execute("PRAGMA table_info(meals)") as cursor:
+            columns = {row[1] for row in await cursor.fetchall()}
+        for col in ("proteins", "fats", "carbohydrates"):
+            if col not in columns:
+                await db.execute(f"ALTER TABLE meals ADD COLUMN {col} INTEGER DEFAULT NULL")
         await db.commit()
 
 
@@ -43,6 +50,9 @@ async def log_meal(
     description: str,
     calories: int,
     input_type: str,
+    proteins: int | None = None,
+    fats: int | None = None,
+    carbohydrates: int | None = None,
 ) -> None:
     """Insert a meal record for a user.
 
@@ -51,13 +61,16 @@ async def log_meal(
         description: Human-readable food description.
         calories: Estimated calorie count.
         input_type: "text" or "photo".
+        proteins: Estimated protein in grams.
+        fats: Estimated fat in grams.
+        carbohydrates: Estimated carbohydrates in grams.
     """
     timestamp = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO meals (user_id, timestamp, description, calories, input_type) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (user_id, timestamp, description, calories, input_type),
+            "INSERT INTO meals (user_id, timestamp, description, calories, input_type, proteins, fats, carbohydrates) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, timestamp, description, calories, input_type, proteins, fats, carbohydrates),
         )
         await db.commit()
 

@@ -15,11 +15,15 @@ from services.claude import (
 )
 
 
-def _make_response(food_items, calories, confidence, clarifying_question=None):
+def _make_response(food_items, calories, confidence, clarifying_question=None,
+                   proteins_g=10, fats_g=5, carbohydrates_g=30):
     """Build a mock Anthropic response object."""
     payload = json.dumps({
         "food_items": food_items,
         "calories_estimate": calories,
+        "proteins_g": proteins_g,
+        "fats_g": fats_g,
+        "carbohydrates_g": carbohydrates_g,
         "confidence": confidence,
         "clarifying_question": clarifying_question,
     })
@@ -52,13 +56,16 @@ def mock_create():
 # ---------------------------------------------------------------------------
 
 async def test_estimate_from_text_returns_dataclass(mock_create):
-    mock_create.return_value = _make_response(["banana"], 90, 0.9)
+    mock_create.return_value = _make_response(["banana"], 90, 0.9, proteins_g=1, fats_g=0, carbohydrates_g=23)
     result = await estimate_from_text(user_id=1, text="I had a banana")
     assert isinstance(result, CalorieEstimate)
     assert result.food_items == ["banana"]
     assert result.calories_estimate == 90
     assert result.confidence == pytest.approx(0.9)
     assert result.clarifying_question is None
+    assert result.proteins_g == 1
+    assert result.fats_g == 0
+    assert result.carbohydrates_g == 23
 
 
 async def test_estimate_from_text_clarifying_question(mock_create):
@@ -174,3 +181,22 @@ def test_parse_response_coerces_float_calories():
     result = _parse_response(text)
     assert result.calories_estimate == 350
     assert isinstance(result.calories_estimate, int)
+
+
+def test_parse_response_macros_absent_returns_none():
+    from services.claude import _parse_response
+    # Response without macro fields (e.g. old prompt or unexpected Claude output)
+    text = '{"food_items": ["egg"], "calories_estimate": 70, "confidence": 0.9, "clarifying_question": null}'
+    result = _parse_response(text)
+    assert result.proteins_g is None
+    assert result.fats_g is None
+    assert result.carbohydrates_g is None
+
+
+def test_parse_response_macros_present():
+    from services.claude import _parse_response
+    text = '{"food_items": ["chicken"], "calories_estimate": 165, "proteins_g": 31, "fats_g": 4, "carbohydrates_g": 0, "confidence": 0.95, "clarifying_question": null}'
+    result = _parse_response(text)
+    assert result.proteins_g == 31
+    assert result.fats_g == 4
+    assert result.carbohydrates_g == 0
