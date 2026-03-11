@@ -1,0 +1,34 @@
+name: CI / Deploy
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements-dev.txt --quiet
+      - run: pytest
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to ether.emind.at
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ether.emind.at
+          username: calbot
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/calbot
+            git pull origin master
+            venv/bin/pip install -r requirements.txt --quiet
+            sudo systemctl restart calbot
+            systemctl is-active calbot
