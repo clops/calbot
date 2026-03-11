@@ -4,20 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Calbot** is a Telegram calorie tracker bot. Users send food descriptions or photos; the bot estimates calories using Claude AI and logs them to SQLite. See `ROADMAP.md` for the phased build plan.
+**Calbot** is a Telegram calorie tracker bot. Users send food descriptions or photos; the bot estimates calories using Claude AI and logs them to SQLite. Phases 1–4 are complete and the bot is running in production on `ether.emind.at`.
 
 ## Environment Setup
 
 ```bash
 python -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt        # production deps
+pip install -r requirements-dev.txt    # adds pytest + plugins
 ```
 
 Requires a `.env` file (not committed):
 ```
 BOT_TOKEN=<from @BotFather>
 ANTHROPIC_API_KEY=<from console.anthropic.com>
+ALLOWED_USER_IDS=<comma-separated Telegram user IDs>
 LOG_LEVEL=INFO   # optional, defaults to INFO
 ```
 
@@ -28,30 +30,76 @@ source venv/bin/activate
 python main.py
 ```
 
+## Running Tests
+
+```bash
+source venv/bin/activate
+pytest
+```
+
+50 tests, no API keys or network access required (everything is mocked).
+
 ## Architecture
 
-The project follows a layered structure being built phase-by-phase:
-
-- **`main.py`** — entry point; registers Telegram command/message handlers and starts polling
-- **`handlers/`** — Telegram handler functions (to be extracted from main.py in Phase 2+)
-- **`services/`** — business logic: Claude API calls, calorie estimation, clarifying question loop
-- **`utils/`** — shared helpers (e.g., base64 photo encoding for vision)
-- **`data/`** — SQLite database files (`.db` files are gitignored)
-
-### Phase 2 design (Claude integration)
-Claude responses should be structured JSON:
-```json
-{"food_items": [...], "calories_estimate": 450, "confidence": 0.8, "clarifying_question": null}
 ```
-Per-user conversation state for the clarifying loop is kept in an in-memory dict keyed by `user_id`.
+calbot/
+├── main.py                  # entry point: wiring, allowlist, keyboard, polling
+├── handlers/
+│   └── food.py              # Telegram handlers (text, photo, today, history, cancel)
+├── services/
+│   ├── claude.py            # Claude API + per-user conversation state
+│   └── database.py          # aiosqlite CRUD (init_db, log_meal, get_today, get_history)
+└── utils/
+    └── photos.py            # Telegram photo download → base64
+```
 
-### Phase 3 design (SQLite)
-Schema: `user_id | timestamp | description | calories | input_type`
-Use `aiosqlite` for async DB access compatible with `python-telegram-bot`'s async handlers.
+### Key design decisions
+- **Polling mode** — no inbound ports, no webhook, no TLS cert needed
+- **Allowlist** — `ALLOWED_USER_IDS` env var gates all handlers via `filters.User`
+- **Lazy Claude client** — `AsyncAnthropic` instantiated on first use so tests import cleanly
+- **In-memory conversation state** — `_conversations: dict[int, list[dict]]` in `services/claude.py`; cleared after successful log or `/cancel`
+- **JSON fence stripping** — `_parse_response` strips markdown code fences before `json.loads()`
+- **Model** — `claude-haiku-4-5-20251001` (fast, cheap, sufficient for calorie estimation)
 
-### Photo handling (Phase 2)
-Download the highest-resolution photo from `update.message.photo[-1]`, base64-encode it, and pass to Claude vision API.
+### Claude response format
+```json
+{"food_items": ["item"], "calories_estimate": 450, "confidence": 0.8, "clarifying_question": null}
+```
+If `clarifying_question` is set, the handler replies with the question and returns without logging.
 
-## Deployment Target
+### Database schema
+```sql
+CREATE TABLE meals (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    timestamp   TEXT    NOT NULL,   -- ISO 8601 UTC
+    description TEXT    NOT NULL,
+    calories    INTEGER NOT NULL,
+    input_type  TEXT    NOT NULL    -- "text" or "photo"
+);
+```
 
-Server: `ether.emind.at` — run as a `systemd` service in polling mode (no webhook needed).
+## Deployment
+
+**Server:** `ether.emind.at`, Ubuntu 22, SSH on port 2000
+**Service user:** `calbot` (home: `/opt/calbot`)
+**Service file:** `calbot.service` (copy to `/etc/systemd/system/`)
+
+```bash
+# Deploy manually
+ssh -p 2000 calbot@ether.emind.at
+cd /opt/calbot && git pull origin master
+venv/bin/pip install -r requirements.txt --quiet
+sudo systemctl restart calbot
+```
+
+**CI/CD:** `.github/workflows/deploy.yml` — runs pytest then auto-deploys on every push to `master` if tests pass. Requires `DEPLOY_SSH_KEY` GitHub secret.
+
+## Day-to-day server operations
+
+```bash
+systemctl status calbot
+systemctl restart calbot
+journalctl -u calbot -f
+journalctl -u calbot --since today
+```
