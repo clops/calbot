@@ -24,6 +24,7 @@ jobs:
         with:
           host: ether.emind.at
           username: calbot
+          port: 2000
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             set -e
