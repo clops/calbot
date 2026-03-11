@@ -346,3 +346,32 @@ class TestCmdCancel:
 
             reply = update.message.reply_text.call_args.args[0]
             assert "nothing" in reply.lower()
+
+
+# ---------------------------------------------------------------------------
+# cmd_undo
+# ---------------------------------------------------------------------------
+
+class TestCmdUndo:
+    async def test_undo_confirms_deleted_meal(self):
+        from handlers.food import cmd_undo
+
+        meal = {"description": "banana", "calories": 90, "id": 1, "user_id": 1,
+                "timestamp": "2026-03-10T08:00:00+00:00", "input_type": "text"}
+        with patch("handlers.food.database.delete_last_meal", new_callable=AsyncMock, return_value=meal):
+            update = _make_update()
+            await cmd_undo(update, _make_context())
+
+        reply = update.message.reply_text.call_args.args[0]
+        assert "banana" in reply
+        assert "90" in reply
+
+    async def test_undo_when_nothing_logged(self):
+        from handlers.food import cmd_undo
+
+        with patch("handlers.food.database.delete_last_meal", new_callable=AsyncMock, return_value=None):
+            update = _make_update()
+            await cmd_undo(update, _make_context())
+
+        reply = update.message.reply_text.call_args.args[0]
+        assert "nothing" in reply.lower() or "no" in reply.lower()

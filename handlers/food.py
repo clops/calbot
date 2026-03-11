@@ -117,6 +117,18 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("Nothing to cancel.")
 
 
+async def cmd_undo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Delete the last logged meal and confirm to the user."""
+    user_id = update.effective_user.id
+    meal = await database.delete_last_meal(user_id)
+    if meal is None:
+        await update.message.reply_text("Nothing to undo — no meals logged yet.")
+        return
+    await update.message.reply_text(
+        f"↩️ Removed: {meal['description']} — {meal['calories']} kcal"
+    )
+
+
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Reply with today's calorie total and meal list."""
     user_id = update.effective_user.id

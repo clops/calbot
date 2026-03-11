@@ -119,3 +119,37 @@ async def test_get_history_excludes_old_meals(tmp_db):
 async def test_get_history_empty_for_new_user(tmp_db):
     await db_service.init_db()
     assert await db_service.get_history(99) == []
+
+
+# ---------------------------------------------------------------------------
+# delete_last_meal
+# ---------------------------------------------------------------------------
+
+async def test_delete_last_meal_removes_most_recent(tmp_db):
+    await db_service.init_db()
+    await db_service.log_meal(1, "breakfast", 300, "text")
+    await db_service.log_meal(1, "lunch", 600, "text")
+
+    deleted = await db_service.delete_last_meal(1)
+    assert deleted["description"] == "lunch"
+    assert deleted["calories"] == 600
+
+    meals = await db_service.get_today(1)
+    assert len(meals) == 1
+    assert meals[0]["description"] == "breakfast"
+
+
+async def test_delete_last_meal_returns_none_when_empty(tmp_db):
+    await db_service.init_db()
+    assert await db_service.delete_last_meal(42) is None
+
+
+async def test_delete_last_meal_only_affects_own_user(tmp_db):
+    await db_service.init_db()
+    await db_service.log_meal(1, "apple", 80, "text")
+    await db_service.log_meal(2, "burger", 700, "text")
+
+    await db_service.delete_last_meal(1)
+
+    assert await db_service.get_today(1) == []
+    assert len(await db_service.get_today(2)) == 1

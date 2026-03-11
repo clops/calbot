@@ -17,7 +17,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from handlers.food import handle_text, handle_photo, cmd_today, cmd_history, cmd_cancel
+from handlers.food import handle_text, handle_photo, cmd_today, cmd_history, cmd_cancel, cmd_undo
 from services.database import init_db
 
 def _build_allowlist() -> filters.BaseFilter:
@@ -61,6 +61,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Commands:\n"
         "/today — see today's total\n"
         "/history — last 7 days\n"
+        "/undo — remove the last logged meal\n"
         "/cancel — cancel a pending question\n"
         "/help — show this message",
         reply_markup=MAIN_KEYBOARD,
@@ -109,6 +110,7 @@ def main() -> None:
     app.add_handler(CommandHandler("today",   cmd_today,   filters=allowed))
     app.add_handler(CommandHandler("history", cmd_history, filters=allowed))
     app.add_handler(CommandHandler("cancel",  cmd_cancel,  filters=allowed))
+    app.add_handler(CommandHandler("undo",    cmd_undo,    filters=allowed))
 
     # Keyboard buttons (must be before the general text handler)
     button_filter = filters.Text(["📊 Today", "📅 History"]) & allowed

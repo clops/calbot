@@ -79,6 +79,23 @@ async def get_today(user_id: int) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+async def delete_last_meal(user_id: int) -> dict | None:
+    """Delete the most recent meal for the user and return it, or None if none exists."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM meals WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+            (user_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        meal = dict(row)
+        await db.execute("DELETE FROM meals WHERE id = ?", (meal["id"],))
+        await db.commit()
+    return meal
+
+
 async def get_history(user_id: int, days: int = 7) -> list[dict]:
     """Return meal records from the last N days (UTC) for the given user.
 
