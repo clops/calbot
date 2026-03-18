@@ -37,7 +37,7 @@ source venv/bin/activate
 pytest
 ```
 
-62 tests, no API keys or network access required (everything is mocked).
+77 tests, no API keys or network access required (everything is mocked).
 
 ## Architecture
 
@@ -45,10 +45,10 @@ pytest
 calbot/
 ├── main.py                  # entry point: wiring, allowlist, keyboard, polling
 ├── handlers/
-│   └── food.py              # Telegram handlers (text, photo, today, history, cancel, undo)
+│   └── food.py              # Telegram handlers (text, photo, today, history, cancel, undo, settings)
 ├── services/
 │   ├── claude.py            # Claude API + per-user conversation state
-│   └── database.py          # aiosqlite CRUD (init_db, log_meal, get_today, get_history, delete_last_meal)
+│   └── database.py          # aiosqlite CRUD (init_db, log_meal, get_today, get_history, delete_last_meal, get_user_settings, toggle_setting)
 └── utils/
     └── photos.py            # Telegram photo download → base64
 ```
@@ -83,6 +83,17 @@ CREATE TABLE meals (
 );
 ```
 Macro columns are added automatically by `init_db()` via `ALTER TABLE ADD COLUMN` if missing (migration-safe for existing production data).
+
+```sql
+CREATE TABLE user_settings (
+    user_id              INTEGER PRIMARY KEY,
+    show_calories        INTEGER NOT NULL DEFAULT 1,
+    show_proteins        INTEGER NOT NULL DEFAULT 1,
+    show_fats            INTEGER NOT NULL DEFAULT 1,
+    show_carbohydrates   INTEGER NOT NULL DEFAULT 1
+);
+```
+Per-user display preferences. Created by `init_db()`. Row is inserted on first toggle; absent row means all fields shown.
 
 ## Deployment
 

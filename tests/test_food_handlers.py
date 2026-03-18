@@ -7,6 +7,20 @@ import pytest
 from handlers.food import MAX_TEXT_LENGTH
 from services.claude import CalorieEstimate
 
+_DEFAULT_SETTINGS = {
+    "show_calories": True,
+    "show_proteins": True,
+    "show_fats": True,
+    "show_carbohydrates": True,
+}
+
+
+@pytest.fixture(autouse=True)
+def _mock_user_settings():
+    """All handler tests get default (all-True) user settings unless overridden."""
+    with patch("handlers.food.database.get_user_settings", new_callable=AsyncMock, return_value=_DEFAULT_SETTINGS):
+        yield
+
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -403,3 +417,141 @@ class TestCmdUndo:
 
         reply = update.message.reply_text.call_args.args[0]
         assert "nothing" in reply.lower() or "no" in reply.lower()
+
+
+# ---------------------------------------------------------------------------
+# _format_nutrition
+# ---------------------------------------------------------------------------
+
+class TestFormatNutrition:
+    def test_all_shown(self):
+        from handlers.food import _format_nutrition
+        result = _format_nutrition(450, 20, 15, 60)
+        assert "450" in result
+        assert "P: 20g" in result
+        assert "F: 15g" in result
+        assert "C: 60g" in result
+
+    def test_only_calories(self):
+        from handlers.food import _format_nutrition
+        settings = {"show_calories": True, "show_proteins": False, "show_fats": False, "show_carbohydrates": False}
+        result = _format_nutrition(450, 20, 15, 60, settings)
+        assert "450" in result
+        assert "P:" not in result
+
+    def test_all_hidden(self):
+        from handlers.food import _format_nutrition
+        settings = {"show_calories": False, "show_proteins": False, "show_fats": False, "show_carbohydrates": False}
+        result = _format_nutrition(450, 20, 15, 60, settings)
+        assert result == ""
+
+    def test_none_macros(self):
+        from handlers.food import _format_nutrition
+        result = _format_nutrition(450, None, None, None)
+        assert "450" in result
+        assert "|" not in result
+
+    def test_hide_calories_show_macros(self):
+        from handlers.food import _format_nutrition
+        settings = {"show_calories": False, "show_proteins": True, "show_fats": True, "show_carbohydrates": True}
+        result = _format_nutrition(450, 20, 15, 60, settings)
+        assert "kcal" not in result
+        assert "P: 20g" in result
+
+
+# ---------------------------------------------------------------------------
+# cmd_settings
+# ---------------------------------------------------------------------------
+
+class TestCmdSettings:
+    async def test_settings_shows_inline_keyboard(self):
+        from handlers.food import cmd_settings
+
+        with patch("handlers.food.database.get_user_settings", new_callable=AsyncMock, return_value=_DEFAULT_SETTINGS):
+            update = _make_update()
+            await cmd_settings(update, _make_context())
+
+        call_kwargs = update.message.reply_text.call_args.kwargs
+        assert call_kwargs.get("reply_markup") is not None
+        keyboard = call_kwargs["reply_markup"].inline_keyboard
+        assert len(keyboard) == 4
+
+    async def test_settings_callback_toggles(self):
+        from handlers.food import settings_callback
+
+        query = AsyncMock()
+        query.data = "toggle:show_proteins"
+        query.from_user.id = 1
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        update = MagicMock()
+        update.callback_query = query
+
+        toggled_settings = dict(_DEFAULT_SETTINGS, show_proteins=False)
+        with (
+            patch("handlers.food.database.toggle_setting", new_callable=AsyncMock) as toggle,
+            patch("handlers.food.database.get_user_settings", new_callable=AsyncMock, return_value=toggled_settings),
+        ):
+            await settings_callback(update, _make_context())
+
+        toggle.assert_awaited_once_with(1, "show_proteins")
+        query.answer.assert_awaited_once()
+        query.edit_message_text.assert_awaited_once()
+
+    async def test_settings_callback_ignores_invalid_field(self):
+        from handlers.food import settings_callback
+
+        query = AsyncMock()
+        query.data = "toggle:invalid_field"
+        query.from_user.id = 1
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        update = MagicMock()
+        update.callback_query = query
+
+        with patch("handlers.food.database.toggle_setting", new_callable=AsyncMock, side_effect=ValueError("bad")):
+            await settings_callback(update, _make_context())
+
+        query.edit_message_text.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Display respects settings
+# ---------------------------------------------------------------------------
+
+class TestDisplayRespectsSettings:
+    async def test_confirmation_hides_macros_when_off(self):
+        from handlers.food import handle_text
+
+        no_macros = {"show_calories": True, "show_proteins": False, "show_fats": False, "show_carbohydrates": False}
+        with (
+            patch("handlers.food.claude.estimate_from_text", new_callable=AsyncMock, return_value=_estimate(proteins_g=25, fats_g=8, carbohydrates_g=45)),
+            patch("handlers.food.database.log_meal", new_callable=AsyncMock),
+            patch("handlers.food.claude.clear_conversation"),
+            patch("handlers.food.database.get_user_settings", new_callable=AsyncMock, return_value=no_macros),
+        ):
+            update = _make_update(text="chicken")
+            await handle_text(update, _make_context())
+
+        calls = [c.args[0] for c in update.message.reply_text.call_args_list]
+        assert all("P:" not in c for c in calls)
+
+    async def test_today_respects_settings(self):
+        from handlers.food import cmd_today
+
+        no_fats = {"show_calories": True, "show_proteins": True, "show_fats": False, "show_carbohydrates": True}
+        with (
+            patch("handlers.food.database.get_today", new_callable=AsyncMock, return_value=[
+                {"description": "banana", "calories": 90, "timestamp": "2026-03-10T08:00:00+00:00",
+                 "proteins": 1, "fats": 0, "carbohydrates": 23},
+            ]),
+            patch("handlers.food.database.get_user_settings", new_callable=AsyncMock, return_value=no_fats),
+        ):
+            update = _make_update()
+            await cmd_today(update, _make_context())
+
+        reply = update.message.reply_text.call_args.args[0]
+        assert "F:" not in reply
+        assert "P:" in reply

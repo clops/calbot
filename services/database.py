@@ -1,8 +1,9 @@
 """
 SQLite persistence layer using aiosqlite.
 
-Schema (single table):
-    meals(id, user_id, timestamp, description, calories, input_type)
+Tables:
+    meals(id, user_id, timestamp, description, calories, input_type, proteins, fats, carbohydrates)
+    user_settings(user_id, show_calories, show_proteins, show_fats, show_carbohydrates)
 
 input_type is either "text" or "photo".
 """
@@ -42,6 +43,14 @@ async def init_db() -> None:
         for col in ("proteins", "fats", "carbohydrates"):
             if col not in columns:
                 await db.execute(f"ALTER TABLE meals ADD COLUMN {col} INTEGER DEFAULT NULL")
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS user_settings ("
+            "user_id INTEGER PRIMARY KEY, "
+            "show_calories INTEGER NOT NULL DEFAULT 1, "
+            "show_proteins INTEGER NOT NULL DEFAULT 1, "
+            "show_fats INTEGER NOT NULL DEFAULT 1, "
+            "show_carbohydrates INTEGER NOT NULL DEFAULT 1)"
+        )
         await db.commit()
 
 
@@ -130,3 +139,53 @@ async def get_history(user_id: int, days: int = 7) -> list[dict]:
         ) as cursor:
             rows = await cursor.fetchall()
     return [dict(row) for row in rows]
+
+
+_SETTINGS_FIELDS = frozenset({"show_calories", "show_proteins", "show_fats", "show_carbohydrates"})
+
+_SETTINGS_DEFAULTS = {
+    "show_calories": True,
+    "show_proteins": True,
+    "show_fats": True,
+    "show_carbohydrates": True,
+}
+
+
+async def get_user_settings(user_id: int) -> dict:
+    """Return display settings for a user, defaulting to all-True if no row exists."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM user_settings WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+    if row is None:
+        return dict(_SETTINGS_DEFAULTS)
+    return {field: bool(dict(row)[field]) for field in _SETTINGS_FIELDS}
+
+
+async def toggle_setting(user_id: int, field: str) -> bool:
+    """Toggle a single display setting for a user. Returns the new value.
+
+    Raises ValueError if field is not a valid settings column.
+    """
+    if field not in _SETTINGS_FIELDS:
+        raise ValueError(f"Invalid setting: {field}")
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Ensure row exists with defaults
+        await db.execute(
+            "INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)", (user_id,)
+        )
+        # Flip the value: 1 -> 0, 0 -> 1
+        await db.execute(
+            f"UPDATE user_settings SET {field} = NOT {field} WHERE user_id = ?",
+            (user_id,),
+        )
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM user_settings WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        await db.commit()
+    return bool(dict(row)[field])

@@ -198,3 +198,46 @@ async def test_init_db_migration_adds_macro_columns(tmp_db):
     await db_service.log_meal(1, "egg", 70, "text", proteins=6, fats=5, carbohydrates=0)
     meals = await db_service.get_today(1)
     assert meals[0]["proteins"] == 6
+
+
+# ---------------------------------------------------------------------------
+# user_settings
+# ---------------------------------------------------------------------------
+
+async def test_init_db_creates_user_settings_table(tmp_db):
+    await db_service.init_db()
+    import aiosqlite
+    async with aiosqlite.connect(db_service.DB_PATH) as db:
+        async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_settings'") as cur:
+            row = await cur.fetchone()
+    assert row is not None
+
+
+async def test_get_user_settings_defaults_all_true(tmp_db):
+    await db_service.init_db()
+    settings = await db_service.get_user_settings(999)
+    assert settings == {"show_calories": True, "show_proteins": True, "show_fats": True, "show_carbohydrates": True}
+
+
+async def test_toggle_setting_flips_value(tmp_db):
+    await db_service.init_db()
+    new_val = await db_service.toggle_setting(1, "show_proteins")
+    assert new_val is False
+    # Toggle again
+    new_val = await db_service.toggle_setting(1, "show_proteins")
+    assert new_val is True
+
+
+async def test_toggle_setting_creates_row(tmp_db):
+    await db_service.init_db()
+    await db_service.toggle_setting(42, "show_fats")
+    settings = await db_service.get_user_settings(42)
+    assert settings["show_fats"] is False
+    # Other fields remain default
+    assert settings["show_calories"] is True
+
+
+async def test_toggle_setting_rejects_invalid_field(tmp_db):
+    await db_service.init_db()
+    with pytest.raises(ValueError, match="Invalid setting"):
+        await db_service.toggle_setting(1, "show_sodium")
