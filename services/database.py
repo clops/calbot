@@ -51,6 +51,20 @@ async def init_db() -> None:
             "show_fats INTEGER NOT NULL DEFAULT 1, "
             "show_carbohydrates INTEGER NOT NULL DEFAULT 1)"
         )
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS user_profiles ("
+            "user_id INTEGER PRIMARY KEY, "
+            "weight_kg REAL NOT NULL, "
+            "height_cm REAL NOT NULL, "
+            "age INTEGER NOT NULL, "
+            "sex TEXT NOT NULL, "
+            "activity_level TEXT NOT NULL, "
+            "goal TEXT NOT NULL, "
+            "target_calories INTEGER NOT NULL, "
+            "target_proteins INTEGER NOT NULL, "
+            "target_fats INTEGER NOT NULL, "
+            "target_carbs INTEGER NOT NULL)"
+        )
         await db.commit()
 
 
@@ -189,3 +203,40 @@ async def toggle_setting(user_id: int, field: str) -> bool:
             row = await cursor.fetchone()
         await db.commit()
     return bool(dict(row)[field])
+
+
+async def save_user_profile(
+    user_id: int,
+    weight_kg: float,
+    height_cm: float,
+    age: int,
+    sex: str,
+    activity_level: str,
+    goal: str,
+    targets: dict,
+) -> None:
+    """Insert or update a user's profile and pre-computed targets."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO user_profiles "
+            "(user_id, weight_kg, height_cm, age, sex, activity_level, goal, "
+            "target_calories, target_proteins, target_fats, target_carbs) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                user_id, weight_kg, height_cm, age, sex, activity_level, goal,
+                targets["target_calories"], targets["target_proteins"],
+                targets["target_fats"], targets["target_carbs"],
+            ),
+        )
+        await db.commit()
+
+
+async def get_user_profile(user_id: int) -> dict | None:
+    """Return a user's profile and targets, or None if not set."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None

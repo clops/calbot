@@ -241,3 +241,53 @@ async def test_toggle_setting_rejects_invalid_field(tmp_db):
     await db_service.init_db()
     with pytest.raises(ValueError, match="Invalid setting"):
         await db_service.toggle_setting(1, "show_sodium")
+
+
+# ---------------------------------------------------------------------------
+# user_profiles
+# ---------------------------------------------------------------------------
+
+_SAMPLE_TARGETS = {
+    "target_calories": 2200,
+    "target_proteins": 150,
+    "target_fats": 61,
+    "target_carbs": 240,
+}
+
+
+async def test_init_db_creates_user_profiles_table(tmp_db):
+    await db_service.init_db()
+    import aiosqlite
+    async with aiosqlite.connect(db_service.DB_PATH) as db:
+        async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_profiles'") as cur:
+            row = await cur.fetchone()
+    assert row is not None
+
+
+async def test_get_user_profile_returns_none_for_new_user(tmp_db):
+    await db_service.init_db()
+    assert await db_service.get_user_profile(999) is None
+
+
+async def test_save_and_get_user_profile(tmp_db):
+    await db_service.init_db()
+    await db_service.save_user_profile(1, 80.0, 180.0, 30, "male", "moderate", "maintain", _SAMPLE_TARGETS)
+
+    profile = await db_service.get_user_profile(1)
+    assert profile["weight_kg"] == 80.0
+    assert profile["sex"] == "male"
+    assert profile["target_calories"] == 2200
+    assert profile["target_proteins"] == 150
+
+
+async def test_save_user_profile_upserts(tmp_db):
+    await db_service.init_db()
+    await db_service.save_user_profile(1, 80.0, 180.0, 30, "male", "moderate", "maintain", _SAMPLE_TARGETS)
+
+    updated_targets = dict(_SAMPLE_TARGETS, target_calories=2700)
+    await db_service.save_user_profile(1, 85.0, 180.0, 31, "male", "active", "gain", updated_targets)
+
+    profile = await db_service.get_user_profile(1)
+    assert profile["weight_kg"] == 85.0
+    assert profile["target_calories"] == 2700
+    assert profile["goal"] == "gain"

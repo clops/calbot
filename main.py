@@ -19,6 +19,7 @@ from telegram.ext import (
 )
 
 from handlers.food import handle_text, handle_photo, cmd_today, cmd_history, cmd_cancel, cmd_undo, cmd_settings, settings_callback
+from handlers.profile import build_profile_conversation
 from services.database import init_db
 
 def _build_allowlist() -> filters.BaseFilter:
@@ -65,6 +66,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/undo — remove the last logged meal\n"
         "/cancel — cancel a pending question\n"
         "/settings — choose what nutrition info to show\n"
+        "/profile — set up your daily nutrition targets\n"
         "/help — show this message",
         reply_markup=MAIN_KEYBOARD,
     )
@@ -115,6 +117,9 @@ def main() -> None:
     app.add_handler(CommandHandler("undo",    cmd_undo,    filters=allowed))
     app.add_handler(CommandHandler("settings", cmd_settings, filters=allowed))
     app.add_handler(CallbackQueryHandler(settings_callback, pattern="^toggle:"))
+
+    # Profile conversation (must be before general text handler)
+    app.add_handler(build_profile_conversation(allowed))
 
     # Keyboard buttons (must be before the general text handler)
     button_filter = filters.Text(["📊 Today", "📅 History"]) & allowed

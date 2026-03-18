@@ -17,8 +17,11 @@ _DEFAULT_SETTINGS = {
 
 @pytest.fixture(autouse=True)
 def _mock_user_settings():
-    """All handler tests get default (all-True) user settings unless overridden."""
-    with patch("handlers.food.database.get_user_settings", new_callable=AsyncMock, return_value=_DEFAULT_SETTINGS):
+    """All handler tests get default (all-True) settings and no profile unless overridden."""
+    with (
+        patch("handlers.food.database.get_user_settings", new_callable=AsyncMock, return_value=_DEFAULT_SETTINGS),
+        patch("handlers.food.database.get_user_profile", new_callable=AsyncMock, return_value=None),
+    ):
         yield
 
 
@@ -555,3 +558,43 @@ class TestDisplayRespectsSettings:
         reply = update.message.reply_text.call_args.args[0]
         assert "F:" not in reply
         assert "P:" in reply
+
+    async def test_today_shows_progress_with_profile(self):
+        from handlers.food import cmd_today
+
+        profile = {
+            "target_calories": 2200, "target_proteins": 150,
+            "target_fats": 61, "target_carbs": 240,
+        }
+        with (
+            patch("handlers.food.database.get_today", new_callable=AsyncMock, return_value=[
+                {"description": "chicken", "calories": 450, "timestamp": "2026-03-10T12:00:00+00:00",
+                 "proteins": 35, "fats": 5, "carbohydrates": 60},
+            ]),
+            patch("handlers.food.database.get_user_settings", new_callable=AsyncMock, return_value=_DEFAULT_SETTINGS),
+            patch("handlers.food.database.get_user_profile", new_callable=AsyncMock, return_value=profile),
+        ):
+            update = _make_update()
+            await cmd_today(update, _make_context())
+
+        reply = update.message.reply_text.call_args.args[0]
+        assert "450/2200" in reply
+        assert "P: 35/150g" in reply
+
+    async def test_today_no_progress_without_profile(self):
+        from handlers.food import cmd_today
+
+        with (
+            patch("handlers.food.database.get_today", new_callable=AsyncMock, return_value=[
+                {"description": "banana", "calories": 90, "timestamp": "2026-03-10T08:00:00+00:00",
+                 "proteins": 1, "fats": 0, "carbohydrates": 23},
+            ]),
+            patch("handlers.food.database.get_user_settings", new_callable=AsyncMock, return_value=_DEFAULT_SETTINGS),
+            patch("handlers.food.database.get_user_profile", new_callable=AsyncMock, return_value=None),
+        ):
+            update = _make_update()
+            await cmd_today(update, _make_context())
+
+        reply = update.message.reply_text.call_args.args[0]
+        # Should not contain fraction format
+        assert "/" not in reply or "kcal" not in reply.split("/")[0]

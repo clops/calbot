@@ -37,7 +37,7 @@ source venv/bin/activate
 pytest
 ```
 
-77 tests, no API keys or network access required (everything is mocked).
+104 tests, no API keys or network access required (everything is mocked).
 
 ## Architecture
 
@@ -46,9 +46,11 @@ calbot/
 ├── main.py                  # entry point: wiring, allowlist, keyboard, polling
 ├── handlers/
 │   └── food.py              # Telegram handlers (text, photo, today, history, cancel, undo, settings)
+│   └── profile.py           # /profile ConversationHandler (guided setup for daily targets)
 ├── services/
 │   ├── claude.py            # Claude API + per-user conversation state
-│   └── database.py          # aiosqlite CRUD (init_db, log_meal, get_today, get_history, delete_last_meal, get_user_settings, toggle_setting)
+│   ├── nutrition.py         # Mifflin-St Jeor daily target calculations (pure functions)
+│   └── database.py          # aiosqlite CRUD (init_db, log_meal, get_today, get_history, delete_last_meal, get_user_settings, toggle_setting, save_user_profile, get_user_profile)
 └── utils/
     └── photos.py            # Telegram photo download → base64
 ```
@@ -94,6 +96,23 @@ CREATE TABLE user_settings (
 );
 ```
 Per-user display preferences. Created by `init_db()`. Row is inserted on first toggle; absent row means all fields shown.
+
+```sql
+CREATE TABLE user_profiles (
+    user_id         INTEGER PRIMARY KEY,
+    weight_kg       REAL NOT NULL,
+    height_cm       REAL NOT NULL,
+    age             INTEGER NOT NULL,
+    sex             TEXT NOT NULL,          -- 'male' or 'female'
+    activity_level  TEXT NOT NULL,          -- 'sedentary', 'light', 'moderate', 'active'
+    goal            TEXT NOT NULL,          -- 'lose', 'maintain', 'gain'
+    target_calories INTEGER NOT NULL,
+    target_proteins INTEGER NOT NULL,
+    target_fats     INTEGER NOT NULL,
+    target_carbs    INTEGER NOT NULL
+);
+```
+User profile and pre-computed daily targets (Mifflin-St Jeor). Set via `/profile` guided flow. When present, `/today` shows progress fractions (e.g. `540/2200 kcal`).
 
 ## Deployment
 

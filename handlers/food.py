@@ -64,6 +64,33 @@ def _settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(buttons)
 
 
+def _format_totals_with_targets(total_cal, total_p, total_f, total_c, profile, settings):
+    """Build a footer string showing progress toward daily targets."""
+    parts = []
+    if settings.get("show_calories", True):
+        tc = profile["target_calories"]
+        pct = round(total_cal / tc * 100) if tc else 0
+        parts.append(f"~{total_cal}/{tc} kcal ({pct}%)")
+
+    macro_parts = []
+    if total_p is not None:
+        if settings.get("show_proteins", True):
+            macro_parts.append(f"P: {total_p}/{profile['target_proteins']}g")
+        if settings.get("show_fats", True):
+            macro_parts.append(f"F: {total_f}/{profile['target_fats']}g")
+        if settings.get("show_carbohydrates", True):
+            macro_parts.append(f"C: {total_c}/{profile['target_carbs']}g")
+
+    if not parts and not macro_parts:
+        return ""
+    lines = []
+    if parts:
+        lines.append(f"*Total: {parts[0]}*")
+    if macro_parts:
+        lines.append(f"*{'  '.join(macro_parts)}*")
+    return "\n".join(lines)
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle a text food description or a reply to a clarifying question.
 
@@ -209,14 +236,17 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         meal_lines.append(f"• {m['description']}{suffix}")
 
     total_cal = sum(m["calories"] for m in meals)
-    total_nutrition = _format_nutrition(
-        total_cal,
-        sum(m.get("proteins") or 0 for m in meals) if any(m.get("proteins") is not None for m in meals) else None,
-        sum(m.get("fats") or 0 for m in meals) if any(m.get("proteins") is not None for m in meals) else None,
-        sum(m.get("carbohydrates") or 0 for m in meals) if any(m.get("proteins") is not None for m in meals) else None,
-        settings,
-    )
-    footer = f"*Total: {total_nutrition}*" if total_nutrition else f"*Total: {total_cal} kcal*"
+    has_macros = any(m.get("proteins") is not None for m in meals)
+    total_p = sum(m.get("proteins") or 0 for m in meals) if has_macros else None
+    total_f = sum(m.get("fats") or 0 for m in meals) if has_macros else None
+    total_c = sum(m.get("carbohydrates") or 0 for m in meals) if has_macros else None
+
+    profile = await database.get_user_profile(user_id)
+    if profile:
+        footer = _format_totals_with_targets(total_cal, total_p, total_f, total_c, profile, settings)
+    else:
+        total_nutrition = _format_nutrition(total_cal, total_p, total_f, total_c, settings)
+        footer = f"*Total: {total_nutrition}*" if total_nutrition else f"*Total: {total_cal} kcal*"
 
     await update.message.reply_text(
         "📊 *Today's log:*\n\n" + "\n".join(meal_lines) + f"\n\n{footer}",
@@ -234,6 +264,7 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     settings = await database.get_user_settings(user_id)
+    profile = await database.get_user_profile(user_id)
 
     # Group by date (first 10 chars of ISO timestamp)
     by_date: dict[str, dict] = {}
@@ -250,11 +281,17 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     lines = []
     for date, totals in sorted(by_date.items()):
-        p = totals["proteins"] if totals["has_macros"] else None
-        f_ = totals["fats"] if totals["has_macros"] else None
-        c = totals["carbohydrates"] if totals["has_macros"] else None
-        nutrition = _format_nutrition(totals["calories"], p, f_, c, settings)
-        lines.append(f"• {date}: {nutrition}" if nutrition else f"• {date}: {totals['calories']} kcal")
+        cal = totals["calories"]
+        if profile and settings.get("show_calories", True):
+            tc = profile["target_calories"]
+            pct = round(cal / tc * 100) if tc else 0
+            lines.append(f"• {date}: {cal}/{tc} kcal ({pct}%)")
+        else:
+            p = totals["proteins"] if totals["has_macros"] else None
+            f_ = totals["fats"] if totals["has_macros"] else None
+            c = totals["carbohydrates"] if totals["has_macros"] else None
+            nutrition = _format_nutrition(cal, p, f_, c, settings)
+            lines.append(f"• {date}: {nutrition}" if nutrition else f"• {date}: {cal} kcal")
 
     await update.message.reply_text(
         "📅 *Last 7 days:*\n\n" + "\n".join(lines),
