@@ -285,7 +285,8 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if profile and settings.get("show_calories", True):
             tc = profile["target_calories"]
             pct = round(cal / tc * 100) if tc else 0
-            lines.append(f"• {date}: {cal}/{tc} kcal ({pct}%)")
+            icon = "✅" if 80 <= pct <= 120 else "⚠️" if pct > 120 else "❌"
+            lines.append(f"{icon} {date}: {cal}/{tc} kcal ({pct}%)")
         else:
             p = totals["proteins"] if totals["has_macros"] else None
             f_ = totals["fats"] if totals["has_macros"] else None

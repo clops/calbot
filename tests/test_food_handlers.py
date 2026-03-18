@@ -598,3 +598,29 @@ class TestDisplayRespectsSettings:
         reply = update.message.reply_text.call_args.args[0]
         # Should not contain fraction format
         assert "/" not in reply or "kcal" not in reply.split("/")[0]
+
+    async def test_history_shows_goal_icons(self):
+        from handlers.food import cmd_history
+
+        profile = {
+            "target_calories": 2000, "target_proteins": 150,
+            "target_fats": 61, "target_carbs": 240,
+        }
+        with (
+            patch("handlers.food.database.get_history", new_callable=AsyncMock, return_value=[
+                {"description": "a", "calories": 1900, "timestamp": "2026-03-09T08:00:00+00:00",
+                 "proteins": 100, "fats": 50, "carbohydrates": 200},
+                {"description": "b", "calories": 500, "timestamp": "2026-03-10T08:00:00+00:00",
+                 "proteins": 30, "fats": 10, "carbohydrates": 60},
+            ]),
+            patch("handlers.food.database.get_user_settings", new_callable=AsyncMock, return_value=_DEFAULT_SETTINGS),
+            patch("handlers.food.database.get_user_profile", new_callable=AsyncMock, return_value=profile),
+        ):
+            update = _make_update()
+            await cmd_history(update, _make_context())
+
+        reply = update.message.reply_text.call_args.args[0]
+        # 1900/2000 = 95% -> within 80-120% -> checkmark
+        assert "✅" in reply
+        # 500/2000 = 25% -> below 80% -> cross
+        assert "❌" in reply
