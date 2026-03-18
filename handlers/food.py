@@ -282,15 +282,17 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     lines = []
     for date, totals in sorted(by_date.items()):
         cal = totals["calories"]
-        if profile and settings.get("show_calories", True):
+        p = totals["proteins"] if totals["has_macros"] else None
+        f_ = totals["fats"] if totals["has_macros"] else None
+        c = totals["carbohydrates"] if totals["has_macros"] else None
+
+        if profile:
             tc = profile["target_calories"]
             pct = round(cal / tc * 100) if tc else 0
             icon = "✅" if 80 <= pct <= 120 else "⚠️" if pct > 120 else "❌"
-            lines.append(f"{icon} {date}: {cal}/{tc} kcal ({pct}%)")
+            nutrition = _format_nutrition(cal, p, f_, c, settings)
+            lines.append(f"{icon} {date}: {nutrition}" if nutrition else f"{icon} {date}")
         else:
-            p = totals["proteins"] if totals["has_macros"] else None
-            f_ = totals["fats"] if totals["has_macros"] else None
-            c = totals["carbohydrates"] if totals["has_macros"] else None
             nutrition = _format_nutrition(cal, p, f_, c, settings)
             lines.append(f"• {date}: {nutrition}" if nutrition else f"• {date}: {cal} kcal")
 
