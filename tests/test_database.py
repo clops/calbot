@@ -216,7 +216,7 @@ async def test_init_db_creates_user_settings_table(tmp_db):
 async def test_get_user_settings_defaults_all_true(tmp_db):
     await db_service.init_db()
     settings = await db_service.get_user_settings(999)
-    assert settings == {"show_calories": True, "show_proteins": True, "show_fats": True, "show_carbohydrates": True, "show_reminders": False, "language_code": None}
+    assert settings == {"show_calories": True, "show_proteins": True, "show_fats": True, "show_carbohydrates": True, "show_reminders": False, "language_code": None, "language_manual": False}
 
 
 async def test_toggle_setting_flips_value(tmp_db):
@@ -339,3 +339,32 @@ async def test_get_reminder_users_excludes_disabled(tmp_db):
     await db_service.toggle_setting(1, "show_reminders")
     users = await db_service.get_reminder_users()
     assert users == []
+
+
+# ---------------------------------------------------------------------------
+# set_language (manual override)
+# ---------------------------------------------------------------------------
+
+async def test_set_language_stores_code_and_manual_flag(tmp_db):
+    await db_service.init_db()
+    await db_service.set_language(1, "de")
+    settings = await db_service.get_user_settings(1)
+    assert settings["language_code"] == "de"
+    assert settings["language_manual"] is True
+
+
+async def test_set_language_upserts(tmp_db):
+    await db_service.init_db()
+    await db_service.set_language(1, "de")
+    await db_service.set_language(1, "ru")
+    settings = await db_service.get_user_settings(1)
+    assert settings["language_code"] == "ru"
+    assert settings["language_manual"] is True
+
+
+async def test_update_language_does_not_set_manual_flag(tmp_db):
+    await db_service.init_db()
+    await db_service.update_language(1, "de")
+    settings = await db_service.get_user_settings(1)
+    assert settings["language_code"] == "de"
+    assert settings["language_manual"] is False

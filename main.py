@@ -19,10 +19,11 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from handlers.food import handle_text, handle_photo, cmd_today, cmd_history, cmd_cancel, cmd_undo, cmd_settings, settings_callback
+from handlers.food import handle_text, handle_photo, cmd_today, cmd_history, cmd_cancel, cmd_undo, cmd_settings, settings_callback, language_callback
 from handlers.profile import build_profile_conversation
 from services import claude, database
 from services.database import init_db
+from utils.helpers import resolve_language
 from utils.i18n import t
 
 def _build_allowlist() -> filters.BaseFilter:
@@ -64,7 +65,7 @@ def _build_keyboard(lang: str | None = None) -> ReplyKeyboardMarkup:
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Welcome message."""
-    lang = update.effective_user.language_code if update.effective_user else None
+    lang = await resolve_language(update)
     await update.message.reply_text(
         t("welcome", lang),
         reply_markup=_build_keyboard(lang),
@@ -145,6 +146,7 @@ def main() -> None:
     app.add_handler(CommandHandler("undo",    cmd_undo,    filters=allowed))
     app.add_handler(CommandHandler("settings", cmd_settings, filters=allowed))
     app.add_handler(CallbackQueryHandler(settings_callback, pattern="^toggle:"))
+    app.add_handler(CallbackQueryHandler(language_callback, pattern="^lang:"))
 
     # Profile conversation (must be before general text handler)
     app.add_handler(build_profile_conversation(allowed))

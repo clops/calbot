@@ -58,6 +58,8 @@ async def init_db() -> None:
             await db.execute("ALTER TABLE user_settings ADD COLUMN show_reminders INTEGER NOT NULL DEFAULT 0")
         if "language_code" not in settings_cols:
             await db.execute("ALTER TABLE user_settings ADD COLUMN language_code TEXT DEFAULT NULL")
+        if "language_manual" not in settings_cols:
+            await db.execute("ALTER TABLE user_settings ADD COLUMN language_manual INTEGER NOT NULL DEFAULT 0")
         await db.execute(
             "CREATE TABLE IF NOT EXISTS user_profiles ("
             "user_id INTEGER PRIMARY KEY, "
@@ -184,6 +186,7 @@ async def get_user_settings(user_id: int) -> dict:
     if row is None:
         result = dict(_SETTINGS_DEFAULTS)
         result["language_code"] = None
+        result["language_manual"] = False
         return result
     d = dict(row)
     result = {field: bool(d[field]) for field in _SETTINGS_FIELDS if field in d}
@@ -192,6 +195,7 @@ async def get_user_settings(user_id: int) -> dict:
         if field not in result:
             result[field] = default
     result["language_code"] = d.get("language_code")
+    result["language_manual"] = bool(d.get("language_manual", 0))
     return result
 
 
@@ -265,6 +269,17 @@ async def update_language(user_id: int, language_code: str) -> None:
         await db.execute(
             "INSERT INTO user_settings (user_id, language_code) VALUES (?, ?) "
             "ON CONFLICT(user_id) DO UPDATE SET language_code = excluded.language_code",
+            (user_id, language_code),
+        )
+        await db.commit()
+
+
+async def set_language(user_id: int, language_code: str) -> None:
+    """Explicitly set the user's language (manual override). Sets language_manual=1."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO user_settings (user_id, language_code, language_manual) VALUES (?, ?, 1) "
+            "ON CONFLICT(user_id) DO UPDATE SET language_code = excluded.language_code, language_manual = 1",
             (user_id, language_code),
         )
         await db.commit()

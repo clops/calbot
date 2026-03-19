@@ -11,6 +11,21 @@ from handlers.profile import (
 )
 from tests.conftest import make_update, make_context, make_callback_update
 
+_AUTO_SETTINGS = {
+    "language_manual": False,
+    "language_code": None,
+}
+
+
+@pytest.fixture(autouse=True)
+def _mock_resolve_language_deps():
+    """Mock database calls used by resolve_language so profile tests don't need a real DB."""
+    with (
+        patch("utils.helpers.database.get_user_settings", new_callable=AsyncMock, return_value=_AUTO_SETTINGS),
+        patch("utils.helpers.database.update_language", new_callable=AsyncMock),
+    ):
+        yield
+
 
 # ---------------------------------------------------------------------------
 # Entry point

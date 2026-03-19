@@ -12,8 +12,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from services import claude, database
-from utils.helpers import get_user_lang
-from utils.i18n import t
+from utils.helpers import resolve_language
+from utils.i18n import _normalise_lang, t
 from utils.photos import photo_to_base64
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,8 @@ _SETTING_LABELS = {
     "show_carbohydrates": "label_carbs",
     "show_reminders": "label_reminders",
 }
+
+_LANGUAGE_OPTIONS = [("en", "English"), ("de", "Deutsch"), ("ru", "Русский")]
 
 
 def _format_nutrition(calories, proteins, fats, carbs, settings=None):
@@ -59,12 +61,21 @@ def _format_nutrition(calories, proteins, fats, carbs, settings=None):
 
 
 def _settings_keyboard(settings: dict, lang: str | None = None) -> InlineKeyboardMarkup:
-    """Build an inline keyboard showing current toggle states."""
+    """Build an inline keyboard showing current toggle states and language picker."""
     buttons = []
     for field, label_key in _SETTING_LABELS.items():
         icon = "✅" if settings.get(field) else "❌"
         label = t(label_key, lang)
         buttons.append([InlineKeyboardButton(f"{label}: {icon}", callback_data=f"toggle:{field}")])
+
+    # Language picker row
+    current_lang = _normalise_lang(settings.get("language_code") or lang)
+    lang_buttons = []
+    for code, name in _LANGUAGE_OPTIONS:
+        mark = " ✓" if code == current_lang else ""
+        lang_buttons.append(InlineKeyboardButton(f"{name}{mark}", callback_data=f"lang:{code}"))
+    buttons.append(lang_buttons)
+
     return InlineKeyboardMarkup(buttons)
 
 
@@ -140,9 +151,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     """Handle a text food description or a reply to a clarifying question."""
     user_id = update.effective_user.id
     text = update.message.text
-    lang = get_user_lang(update)
-    if lang:
-        await database.update_language(user_id, lang)
+    lang = await resolve_language(update)
     logger.info("Text from user %d: %s", user_id, text)
 
     if len(text) > MAX_TEXT_LENGTH:
@@ -165,9 +174,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle a food photo, optionally with a caption."""
     user_id = update.effective_user.id
-    lang = get_user_lang(update)
-    if lang:
-        await database.update_language(user_id, lang)
+    lang = await resolve_language(update)
     logger.info("Photo from user %d", user_id)
 
     await update.message.reply_text(t("analysing_photo", lang))
@@ -190,7 +197,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Abort any in-progress clarifying question exchange."""
     user_id = update.effective_user.id
-    lang = get_user_lang(update)
+    lang = await resolve_language(update)
     if claude.has_active_conversation(user_id):
         claude.clear_conversation(user_id)
         await update.message.reply_text(t("cancelled", lang))
@@ -201,7 +208,7 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def cmd_undo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Delete the last logged meal and confirm to the user."""
     user_id = update.effective_user.id
-    lang = get_user_lang(update)
+    lang = await resolve_language(update)
     meal = await database.delete_last_meal(user_id)
     if meal is None:
         await update.message.reply_text(t("nothing_to_undo", lang))
@@ -214,7 +221,7 @@ async def cmd_undo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Reply with today's calorie total and meal list."""
     user_id = update.effective_user.id
-    lang = get_user_lang(update)
+    lang = await resolve_language(update)
     meals = await database.get_today(user_id)
 
     if not meals:
@@ -250,7 +257,7 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Reply with a 7-day calorie summary grouped by date."""
     user_id = update.effective_user.id
-    lang = get_user_lang(update)
+    lang = await resolve_language(update)
     meals = await database.get_history(user_id, days=7)
 
     if not meals:
@@ -289,7 +296,7 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show display settings with toggle buttons."""
     user_id = update.effective_user.id
-    lang = get_user_lang(update)
+    lang = await resolve_language(update)
     settings = await database.get_user_settings(user_id)
     await update.message.reply_text(
         t("settings_header", lang),
@@ -305,7 +312,7 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     field = query.data.removeprefix("toggle:")
     user_id = query.from_user.id
-    lang = get_user_lang(update)
+    lang = await resolve_language(update)
 
     try:
         await database.toggle_setting(user_id, field)
@@ -317,4 +324,22 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         t("settings_header", lang),
         parse_mode="Markdown",
         reply_markup=_settings_keyboard(settings, lang),
+    )
+
+
+async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle language picker button presses."""
+    query = update.callback_query
+    await query.answer()
+
+    new_lang = query.data.removeprefix("lang:")
+    user_id = query.from_user.id
+
+    await database.set_language(user_id, new_lang)
+
+    settings = await database.get_user_settings(user_id)
+    await query.edit_message_text(
+        t("settings_header", new_lang),
+        parse_mode="Markdown",
+        reply_markup=_settings_keyboard(settings, new_lang),
     )

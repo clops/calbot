@@ -13,6 +13,8 @@ _DEFAULT_SETTINGS = {
     "show_proteins": True,
     "show_fats": True,
     "show_carbohydrates": True,
+    "language_manual": False,
+    "language_code": None,
 }
 
 
@@ -459,7 +461,7 @@ class TestCmdSettings:
         call_kwargs = update.message.reply_text.call_args.kwargs
         assert call_kwargs.get("reply_markup") is not None
         keyboard = call_kwargs["reply_markup"].inline_keyboard
-        assert len(keyboard) == 5
+        assert len(keyboard) == 6  # 5 toggle rows + 1 language row
 
     async def test_settings_callback_toggles(self):
         from handlers.food import settings_callback
@@ -657,3 +659,90 @@ class TestSumMacros:
         assert p is None
         assert f is None
         assert c is None
+
+
+# ---------------------------------------------------------------------------
+# language_callback
+# ---------------------------------------------------------------------------
+
+class TestLanguageCallback:
+    async def test_language_callback_sets_language(self):
+        from handlers.food import language_callback
+
+        query = AsyncMock()
+        query.data = "lang:de"
+        query.from_user.id = 1
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        update = MagicMock()
+        update.callback_query = query
+
+        new_settings = dict(_DEFAULT_SETTINGS, language_code="de", language_manual=True)
+        with (
+            patch("handlers.food.database.set_language", new_callable=AsyncMock) as set_lang,
+            patch("handlers.food.database.get_user_settings", new_callable=AsyncMock, return_value=new_settings),
+        ):
+            await language_callback(update, make_context())
+
+        set_lang.assert_awaited_once_with(1, "de")
+        query.edit_message_text.assert_awaited_once()
+        # Verify re-rendered in German
+        call_args = query.edit_message_text.call_args
+        assert "Anzeigeoptionen" in call_args.args[0]
+
+
+# ---------------------------------------------------------------------------
+# _settings_keyboard language row
+# ---------------------------------------------------------------------------
+
+class TestSettingsKeyboardLanguageRow:
+    def test_settings_keyboard_shows_language_row(self):
+        from handlers.food import _settings_keyboard
+        kb = _settings_keyboard(_DEFAULT_SETTINGS, "en")
+        lang_row = kb.inline_keyboard[-1]
+        assert len(lang_row) == 3
+        labels = [btn.text for btn in lang_row]
+        assert any("English" in l for l in labels)
+        assert any("Deutsch" in l for l in labels)
+        assert any("Русский" in l for l in labels)
+
+    def test_settings_keyboard_checkmark_on_active_language(self):
+        from handlers.food import _settings_keyboard
+        settings = dict(_DEFAULT_SETTINGS, language_code="de")
+        kb = _settings_keyboard(settings, "de")
+        lang_row = kb.inline_keyboard[-1]
+        labels = {btn.callback_data: btn.text for btn in lang_row}
+        assert "✓" in labels["lang:de"]
+        assert "✓" not in labels["lang:en"]
+        assert "✓" not in labels["lang:ru"]
+
+
+# ---------------------------------------------------------------------------
+# resolve_language
+# ---------------------------------------------------------------------------
+
+class TestResolveLanguage:
+    async def test_resolve_language_respects_manual_override(self):
+        from utils.helpers import resolve_language
+
+        update = make_update()
+        update.effective_user.language_code = "en"
+        manual_settings = dict(_DEFAULT_SETTINGS, language_manual=True, language_code="de")
+        with patch("utils.helpers.database.get_user_settings", new_callable=AsyncMock, return_value=manual_settings):
+            lang = await resolve_language(update)
+        assert lang == "de"
+
+    async def test_resolve_language_auto_detects_when_not_manual(self):
+        from utils.helpers import resolve_language
+
+        update = make_update()
+        update.effective_user.language_code = "ru"
+        auto_settings = dict(_DEFAULT_SETTINGS, language_manual=False, language_code=None)
+        with (
+            patch("utils.helpers.database.get_user_settings", new_callable=AsyncMock, return_value=auto_settings),
+            patch("utils.helpers.database.update_language", new_callable=AsyncMock) as upd,
+        ):
+            lang = await resolve_language(update)
+        assert lang == "ru"
+        upd.assert_awaited_once_with(1, "ru")
