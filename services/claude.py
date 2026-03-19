@@ -26,17 +26,21 @@ def _get_client() -> AsyncAnthropic:
 # Per-user conversation history: list of {"role": ..., "content": ...} dicts
 _conversations: dict[int, list[dict]] = {}
 
+# Per-user language code for system prompt customisation
+_user_languages: dict[int, str] = {}
+
 _SYSTEM_PROMPT = """\
 You are a calorie and macronutrient estimation assistant. When the user describes food or sends a photo,
 estimate its calorie and macronutrient content and respond ONLY with raw JSON — no markdown, no code fences,
 no explanation. Use exactly this format:
-{"food_items": ["item 1", "item 2"], "calories_estimate": 450, "proteins_g": 20, "fats_g": 15, "carbohydrates_g": 60, "confidence": 0.8, "clarifying_question": null}
+{{"food_items": ["item 1", "item 2"], "calories_estimate": 450, "proteins_g": 20, "fats_g": 15, "carbohydrates_g": 60, "confidence": 0.8, "clarifying_question": null}}
 If the photo shows a nutrition label or packaging, read the values directly from the label
 instead of estimating. Use the serving size and number of servings to compute per-item totals.
 If the label lists values per 100g/ml but the package size differs, ask the user how much they consumed.
 If you need more information to make a reasonable estimate, set clarifying_question to a
 short specific question and set calories_estimate, proteins_g, fats_g, carbohydrates_g to null.
 confidence is a float between 0 and 1.
+IMPORTANT: The food_items list and any clarifying_question MUST be in {language}. Always respond in {language}.
 """
 
 
@@ -74,12 +78,29 @@ def _parse_response(text: str) -> CalorieEstimate:
     )
 
 
+_LANGUAGE_NAMES = {
+    "en": "English",
+    "de": "German",
+    "ru": "Russian",
+}
+
+
+def _get_language_name(lang: str | None) -> str:
+    """Return the full language name for the system prompt."""
+    if not lang:
+        return "English"
+    code = lang.lower().split("-")[0]
+    return _LANGUAGE_NAMES.get(code, "English")
+
+
 async def _call_claude(user_id: int) -> CalorieEstimate:
     """Send the current conversation history for user_id to Claude and return the estimate."""
+    lang_name = _get_language_name(_user_languages.get(user_id))
+    system = _SYSTEM_PROMPT.format(language=lang_name)
     response = await _get_client().messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=512,
-        system=_SYSTEM_PROMPT,
+        system=system,
         messages=_conversations[user_id],
     )
     reply_text = response.content[0].text
@@ -87,7 +108,7 @@ async def _call_claude(user_id: int) -> CalorieEstimate:
     return _parse_response(reply_text)
 
 
-async def estimate_from_text(user_id: int, text: str) -> CalorieEstimate:
+async def estimate_from_text(user_id: int, text: str, language_code: str | None = None) -> CalorieEstimate:
     """Estimate calories from a text food description.
 
     Appends the user message to the conversation history so follow-up
@@ -96,18 +117,21 @@ async def estimate_from_text(user_id: int, text: str) -> CalorieEstimate:
     Args:
         user_id: Telegram user ID used as the conversation key.
         text: The user's food description or clarifying answer.
+        language_code: Telegram language_code of the user.
 
     Returns:
         CalorieEstimate — check clarifying_question before logging.
     """
     if user_id not in _conversations:
         _conversations[user_id] = []
+    if language_code is not None:
+        _user_languages[user_id] = language_code
     _conversations[user_id].append({"role": "user", "content": text})
     return await _call_claude(user_id)
 
 
 async def estimate_from_photo(
-    user_id: int, image_b64: str, caption: str | None
+    user_id: int, image_b64: str, caption: str | None, language_code: str | None = None
 ) -> CalorieEstimate:
     """Estimate calories from a food photo (base64-encoded JPEG).
 
@@ -115,6 +139,7 @@ async def estimate_from_photo(
         user_id: Telegram user ID used as the conversation key.
         image_b64: Base64-encoded image string from utils.photos.photo_to_base64.
         caption: Optional text caption the user sent with the photo.
+        language_code: Telegram language_code of the user.
 
     Returns:
         CalorieEstimate — check clarifying_question before logging.
@@ -136,6 +161,8 @@ async def estimate_from_photo(
 
     if user_id not in _conversations:
         _conversations[user_id] = []
+    if language_code is not None:
+        _user_languages[user_id] = language_code
     _conversations[user_id].append({"role": "user", "content": content})
     return await _call_claude(user_id)
 
@@ -143,6 +170,7 @@ async def estimate_from_photo(
 def clear_conversation(user_id: int) -> None:
     """Delete the conversation history for a user (call after successful logging)."""
     _conversations.pop(user_id, None)
+    _user_languages.pop(user_id, None)
 
 
 def has_active_conversation(user_id: int) -> bool:

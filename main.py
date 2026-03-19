@@ -21,6 +21,7 @@ from telegram.ext import (
 from handlers.food import handle_text, handle_photo, cmd_today, cmd_history, cmd_cancel, cmd_undo, cmd_settings, settings_callback
 from handlers.profile import build_profile_conversation
 from services.database import init_db
+from utils.i18n import t
 
 def _build_allowlist() -> filters.BaseFilter:
     """Return a user filter from ALLOWED_USER_IDS env var, or allow all if unset."""
@@ -42,42 +43,38 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Inline commands (no external dependencies)
+# Keyboard button labels across all supported languages
 # ---------------------------------------------------------------------------
 
-MAIN_KEYBOARD = ReplyKeyboardMarkup(
-    [[KeyboardButton("📊 Today"), KeyboardButton("📅 History")]],
-    resize_keyboard=True,
-    is_persistent=True,
-)
+_ALL_TODAY_LABELS = [t("btn_today", lang) for lang in ("en", "de", "ru")]
+_ALL_HISTORY_LABELS = [t("btn_history", lang) for lang in ("en", "de", "ru")]
+_ALL_BUTTON_LABELS = _ALL_TODAY_LABELS + _ALL_HISTORY_LABELS
+
+
+def _build_keyboard(lang: str | None = None) -> ReplyKeyboardMarkup:
+    """Build a persistent keyboard in the user's language."""
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(t("btn_today", lang)), KeyboardButton(t("btn_history", lang))]],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Welcome message."""
+    lang = update.effective_user.language_code if update.effective_user else None
     await update.message.reply_text(
-        "👋 Hi! I'm your personal calorie tracker.\n\n"
-        "Just send me:\n"
-        "• 📸 A photo of your food\n"
-        "• ✍️ A text description of what you ate\n\n"
-        "I'll estimate the calories and log them for you.\n\n"
-        "Commands:\n"
-        "/today — see today's total\n"
-        "/history — last 7 days\n"
-        "/undo — remove the last logged meal\n"
-        "/cancel — cancel a pending question\n"
-        "/settings — choose what nutrition info to show\n"
-        "/profile — set up your daily nutrition targets\n"
-        "/help — show this message",
-        reply_markup=MAIN_KEYBOARD,
+        t("welcome", lang),
+        reply_markup=_build_keyboard(lang),
     )
 
 
 async def handle_keyboard_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Route persistent keyboard button taps to their command handlers."""
     text = update.message.text
-    if text == "📊 Today":
+    if text in _ALL_TODAY_LABELS:
         await cmd_today(update, context)
-    elif text == "📅 History":
+    elif text in _ALL_HISTORY_LABELS:
         await cmd_history(update, context)
 
 
@@ -122,11 +119,11 @@ def main() -> None:
     app.add_handler(build_profile_conversation(allowed))
 
     # Keyboard buttons (must be before the general text handler)
-    button_filter = filters.Text(["📊 Today", "📅 History"]) & allowed
+    button_filter = filters.Text(_ALL_BUTTON_LABELS) & allowed
     app.add_handler(MessageHandler(button_filter, handle_keyboard_buttons))
 
     # Messages
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Text(["📊 Today", "📅 History"]) & allowed, handle_text))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Text(_ALL_BUTTON_LABELS) & allowed, handle_text))
     app.add_handler(MessageHandler(filters.PHOTO & allowed, handle_photo))
 
     logger.info("Bot is running... (polling)")

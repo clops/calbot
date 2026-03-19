@@ -14,6 +14,7 @@ from telegram.ext import (
 
 from services import database
 from services.nutrition import calculate_targets
+from utils.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,12 @@ _PROFILE_KEYS = (
 )
 
 
+def _lang(update: Update) -> str | None:
+    if update.effective_user:
+        return update.effective_user.language_code
+    return None
+
+
 def _clear_profile_data(context: ContextTypes.DEFAULT_TYPE) -> None:
     for key in _PROFILE_KEYS:
         context.user_data.pop(key, None)
@@ -32,92 +39,98 @@ def _clear_profile_data(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Entry point: start the profile setup flow."""
-    await update.message.reply_text("What is your weight in kg?")
+    await update.message.reply_text(t("profile_weight", _lang(update)))
     return WEIGHT
 
 
 async def receive_weight(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = _lang(update)
     try:
         weight = float(update.message.text.replace(",", "."))
         if not 30 <= weight <= 300:
             raise ValueError
     except (ValueError, TypeError):
-        await update.message.reply_text("Please enter a valid weight between 30 and 300 kg.")
+        await update.message.reply_text(t("profile_weight_error", lang))
         return WEIGHT
 
     context.user_data["profile_weight"] = weight
-    await update.message.reply_text("What is your height in cm?")
+    await update.message.reply_text(t("profile_height", lang))
     return HEIGHT
 
 
 async def receive_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = _lang(update)
     try:
         height = float(update.message.text.replace(",", "."))
         if not 100 <= height <= 250:
             raise ValueError
     except (ValueError, TypeError):
-        await update.message.reply_text("Please enter a valid height between 100 and 250 cm.")
+        await update.message.reply_text(t("profile_height_error", lang))
         return HEIGHT
 
     context.user_data["profile_height"] = height
-    await update.message.reply_text("How old are you?")
+    await update.message.reply_text(t("profile_age", lang))
     return AGE
 
 
 async def receive_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = _lang(update)
     try:
         age = int(update.message.text)
         if not 10 <= age <= 120:
             raise ValueError
     except (ValueError, TypeError):
-        await update.message.reply_text("Please enter a valid age between 10 and 120.")
+        await update.message.reply_text(t("profile_age_error", lang))
         return AGE
 
     context.user_data["profile_age"] = age
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Male", callback_data="profile_sex:male"),
-         InlineKeyboardButton("Female", callback_data="profile_sex:female")],
+        [InlineKeyboardButton(t("profile_male", lang), callback_data="profile_sex:male"),
+         InlineKeyboardButton(t("profile_female", lang), callback_data="profile_sex:female")],
     ])
-    await update.message.reply_text("What is your sex?", reply_markup=keyboard)
+    await update.message.reply_text(t("profile_sex", lang), reply_markup=keyboard)
     return SEX
 
 
 async def receive_sex(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
+    lang = _lang(update)
 
     sex = query.data.removeprefix("profile_sex:")
     context.user_data["profile_sex"] = sex
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Sedentary", callback_data="profile_activity:sedentary")],
-        [InlineKeyboardButton("Lightly active", callback_data="profile_activity:light")],
-        [InlineKeyboardButton("Moderately active", callback_data="profile_activity:moderate")],
-        [InlineKeyboardButton("Very active", callback_data="profile_activity:active")],
+        [InlineKeyboardButton(t("profile_sedentary", lang), callback_data="profile_activity:sedentary")],
+        [InlineKeyboardButton(t("profile_light", lang), callback_data="profile_activity:light")],
+        [InlineKeyboardButton(t("profile_moderate", lang), callback_data="profile_activity:moderate")],
+        [InlineKeyboardButton(t("profile_active", lang), callback_data="profile_activity:active")],
     ])
-    await query.edit_message_text("What is your activity level?", reply_markup=keyboard)
+    await query.edit_message_text(t("profile_activity", lang), reply_markup=keyboard)
     return ACTIVITY
 
 
 async def receive_activity(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
+    lang = _lang(update)
 
     activity = query.data.removeprefix("profile_activity:")
     context.user_data["profile_activity"] = activity
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Lose weight", callback_data="profile_goal:lose")],
-        [InlineKeyboardButton("Maintain", callback_data="profile_goal:maintain")],
-        [InlineKeyboardButton("Gain weight", callback_data="profile_goal:gain")],
+        [InlineKeyboardButton(t("profile_lose", lang), callback_data="profile_goal:lose")],
+        [InlineKeyboardButton(t("profile_maintain", lang), callback_data="profile_goal:maintain")],
+        [InlineKeyboardButton(t("profile_gain", lang), callback_data="profile_goal:gain")],
     ])
-    await query.edit_message_text("What is your goal?", reply_markup=keyboard)
+    await query.edit_message_text(t("profile_goal", lang), reply_markup=keyboard)
     return GOAL
 
 
 async def receive_goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
+    lang = _lang(update)
 
     goal = query.data.removeprefix("profile_goal:")
     user_id = query.from_user.id
@@ -149,8 +162,7 @@ async def receive_goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     tcarbs = targets["target_carbs"]
 
     await query.edit_message_text(
-        f"✅ Profile saved! Your daily targets:\n"
-        f"{tc} kcal | P: {tp}g  F: {tf}g  C: {tcarbs}g"
+        t("profile_saved", lang, cal=tc, p=tp, f=tf, c=tcarbs)
     )
     return ConversationHandler.END
 
@@ -158,7 +170,7 @@ async def receive_goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def cancel_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancel the profile setup flow."""
     _clear_profile_data(context)
-    await update.message.reply_text("Profile setup cancelled.")
+    await update.message.reply_text(t("profile_cancelled", _lang(update)))
     return ConversationHandler.END
 
 
