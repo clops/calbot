@@ -139,6 +139,23 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ru": "Итого",
     },
 
+    # --- macro shorthands ---
+    "macro_p": {
+        "en": "P",
+        "de": "P",
+        "ru": "Б",
+    },
+    "macro_f": {
+        "en": "F",
+        "de": "F",
+        "ru": "Ж",
+    },
+    "macro_c": {
+        "en": "C",
+        "de": "K",
+        "ru": "У",
+    },
+
     # --- setting labels ---
     "label_calories": {
         "en": "Calories",

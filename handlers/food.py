@@ -31,7 +31,7 @@ _SETTING_LABELS = {
 _LANGUAGE_OPTIONS = [("en", "English"), ("de", "Deutsch"), ("ru", "Русский")]
 
 
-def _format_nutrition(calories, proteins, fats, carbs, settings=None):
+def _format_nutrition(calories, proteins, fats, carbs, settings=None, lang=None):
     """Build a nutrition string respecting user display settings."""
     if settings is None:
         settings = {k: True for k in _SETTING_LABELS}
@@ -39,12 +39,13 @@ def _format_nutrition(calories, proteins, fats, carbs, settings=None):
     if settings.get("show_calories", True):
         parts.append(f"~{calories} kcal")
     if proteins is not None:
+        lp, lf, lc = t("macro_p", lang), t("macro_f", lang), t("macro_c", lang)
         if settings.get("show_proteins", True):
-            parts.append(f"P: {proteins}g")
+            parts.append(f"{lp}: {proteins}g")
         if settings.get("show_fats", True):
-            parts.append(f"F: {fats}g")
+            parts.append(f"{lf}: {fats}g")
         if settings.get("show_carbohydrates", True):
-            parts.append(f"C: {carbs}g")
+            parts.append(f"{lc}: {carbs}g")
     if not parts:
         return ""
     # Separate calories from macros with a pipe
@@ -89,12 +90,13 @@ def _format_totals_with_targets(total_cal, total_p, total_f, total_c, profile, s
 
     macro_parts = []
     if total_p is not None:
+        lp, lf, lc = t("macro_p", lang), t("macro_f", lang), t("macro_c", lang)
         if settings.get("show_proteins", True):
-            macro_parts.append(f"P: {total_p}/{profile['target_proteins']}g")
+            macro_parts.append(f"{lp}: {total_p}/{profile['target_proteins']}g")
         if settings.get("show_fats", True):
-            macro_parts.append(f"F: {total_f}/{profile['target_fats']}g")
+            macro_parts.append(f"{lf}: {total_f}/{profile['target_fats']}g")
         if settings.get("show_carbohydrates", True):
-            macro_parts.append(f"C: {total_c}/{profile['target_carbs']}g")
+            macro_parts.append(f"{lc}: {total_c}/{profile['target_carbs']}g")
 
     if not parts and not macro_parts:
         return ""
@@ -140,7 +142,7 @@ async def _process_estimate(update, user_id, estimate, input_type, fallback_desc
     settings = await database.get_user_settings(user_id)
     nutrition = _format_nutrition(
         estimate.calories_estimate, estimate.proteins_g,
-        estimate.fats_g, estimate.carbohydrates_g, settings,
+        estimate.fats_g, estimate.carbohydrates_g, settings, lang,
     )
     suffix = f" — {nutrition}" if nutrition else ""
     items = ", ".join(estimate.food_items)
@@ -234,7 +236,7 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     for m in meals:
         nutrition = _format_nutrition(
             m["calories"], m.get("proteins"), m.get("fats"),
-            m.get("carbohydrates"), settings,
+            m.get("carbohydrates"), settings, lang,
         )
         suffix = f" — {nutrition}" if nutrition else ""
         meal_lines.append(f"• {m['description']}{suffix}")
@@ -245,7 +247,7 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if profile:
         footer = _format_totals_with_targets(total_cal, total_p, total_f, total_c, profile, settings, lang)
     else:
-        total_nutrition = _format_nutrition(total_cal, total_p, total_f, total_c, settings)
+        total_nutrition = _format_nutrition(total_cal, total_p, total_f, total_c, settings, lang)
         footer = f"*{t('total', lang)}: {total_nutrition}*" if total_nutrition else f"*{t('total', lang)}: {total_cal} kcal*"
 
     await update.message.reply_text(
@@ -281,10 +283,10 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             tc = profile["target_calories"]
             pct = round(cal / tc * 100) if tc else 0
             icon = "✅" if 80 <= pct <= 120 else "⚠️" if pct > 120 else "❌"
-            nutrition = _format_nutrition(cal, p, f_, c, settings)
+            nutrition = _format_nutrition(cal, p, f_, c, settings, lang)
             lines.append(f"{icon} {date}: {nutrition}" if nutrition else f"{icon} {date}")
         else:
-            nutrition = _format_nutrition(cal, p, f_, c, settings)
+            nutrition = _format_nutrition(cal, p, f_, c, settings, lang)
             lines.append(f"• {date}: {nutrition}" if nutrition else f"• {date}: {cal} kcal")
 
     await update.message.reply_text(
