@@ -4,6 +4,7 @@ Calorie Tracker Bot — main entry point.
 Wires up handlers and starts polling. Business logic lives in handlers/ and services/.
 """
 
+import datetime
 import logging
 import os
 
@@ -20,6 +21,7 @@ from telegram.ext import (
 
 from handlers.food import handle_text, handle_photo, cmd_today, cmd_history, cmd_cancel, cmd_undo, cmd_settings, settings_callback
 from handlers.profile import build_profile_conversation
+from services import claude, database
 from services.database import init_db
 from utils.i18n import t
 
@@ -83,12 +85,41 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Daily reminder job
+# ---------------------------------------------------------------------------
+
+async def _send_daily_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Check each reminder-enabled user and nudge them if they haven't logged today."""
+    users = await database.get_reminder_users()
+    for user in users:
+        user_id = user["user_id"]
+        try:
+            meals = await database.get_today(user_id)
+            if meals:
+                continue
+            nudge = await claude.generate_nudge(user["language_code"])
+            await context.bot.send_message(chat_id=user_id, text=nudge)
+            logger.info("Sent daily nudge to user %d", user_id)
+        except Exception:
+            logger.exception("Failed to send nudge to user %d", user_id)
+
+
+# ---------------------------------------------------------------------------
 # App bootstrap
 # ---------------------------------------------------------------------------
 
 async def post_init(application: Application) -> None:
     await init_db()
     logger.info("Database initialised.")
+
+    # Schedule daily reminder at 20:00 CET
+    cet = datetime.timezone(datetime.timedelta(hours=1))
+    application.job_queue.run_daily(
+        _send_daily_reminders,
+        time=datetime.time(hour=20, minute=0, tzinfo=cet),
+        name="daily_reminder",
+    )
+    logger.info("Daily reminder job scheduled for 20:00 CET.")
 
 
 def main() -> None:

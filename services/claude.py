@@ -167,6 +167,24 @@ async def estimate_from_photo(
     return await _call_claude(user_id)
 
 
+async def generate_nudge(language_code: str | None = None) -> str:
+    """Generate a short, creative reminder to log food today."""
+    lang_name = _get_language_name(language_code)
+    response = await _get_client().messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=256,
+        system=(
+            "You generate short, fun, motivating reminders for a nutrition tracking bot. "
+            "Be creative, witty, and vary your style — use humour, puns, pop culture references, "
+            "gentle guilt trips, or cheerful encouragement. Keep it to 1-2 sentences. "
+            "Do not use hashtags. Include one relevant emoji. "
+            f"Write in {lang_name}."
+        ),
+        messages=[{"role": "user", "content": "Generate a reminder for someone who hasn't logged any food today."}],
+    )
+    return response.content[0].text.strip()
+
+
 def clear_conversation(user_id: int) -> None:
     """Delete the conversation history for a user (call after successful logging)."""
     _conversations.pop(user_id, None)

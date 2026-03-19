@@ -21,6 +21,7 @@ def _mock_user_settings():
     with (
         patch("handlers.food.database.get_user_settings", new_callable=AsyncMock, return_value=_DEFAULT_SETTINGS),
         patch("handlers.food.database.get_user_profile", new_callable=AsyncMock, return_value=None),
+        patch("handlers.food.database.update_language", new_callable=AsyncMock),
     ):
         yield
 
@@ -32,6 +33,7 @@ def _mock_user_settings():
 def _make_update(text=None, user_id=1, photo=None, caption=None):
     update = MagicMock()
     update.effective_user.id = user_id
+    update.effective_user.language_code = "en"
     update.message.text = text
     update.message.caption = caption
     update.message.photo = photo or []
@@ -477,7 +479,7 @@ class TestCmdSettings:
         call_kwargs = update.message.reply_text.call_args.kwargs
         assert call_kwargs.get("reply_markup") is not None
         keyboard = call_kwargs["reply_markup"].inline_keyboard
-        assert len(keyboard) == 4
+        assert len(keyboard) == 5
 
     async def test_settings_callback_toggles(self):
         from handlers.food import settings_callback

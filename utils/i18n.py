@@ -161,6 +161,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ru": "Углеводы",
     },
 
+    "label_reminders": {
+        "en": "Daily reminder",
+        "de": "Tägliche Erinnerung",
+        "ru": "Ежедневное напоминание",
+    },
+
     # --- profile flow ---
     "profile_weight": {
         "en": "What is your weight in kg?",

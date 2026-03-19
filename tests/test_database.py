@@ -216,7 +216,7 @@ async def test_init_db_creates_user_settings_table(tmp_db):
 async def test_get_user_settings_defaults_all_true(tmp_db):
     await db_service.init_db()
     settings = await db_service.get_user_settings(999)
-    assert settings == {"show_calories": True, "show_proteins": True, "show_fats": True, "show_carbohydrates": True}
+    assert settings == {"show_calories": True, "show_proteins": True, "show_fats": True, "show_carbohydrates": True, "show_reminders": False, "language_code": None}
 
 
 async def test_toggle_setting_flips_value(tmp_db):

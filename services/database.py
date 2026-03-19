@@ -51,6 +51,13 @@ async def init_db() -> None:
             "show_fats INTEGER NOT NULL DEFAULT 1, "
             "show_carbohydrates INTEGER NOT NULL DEFAULT 1)"
         )
+        # Migrate: add reminder and language columns to user_settings
+        async with db.execute("PRAGMA table_info(user_settings)") as cursor:
+            settings_cols = {row[1] for row in await cursor.fetchall()}
+        if "show_reminders" not in settings_cols:
+            await db.execute("ALTER TABLE user_settings ADD COLUMN show_reminders INTEGER NOT NULL DEFAULT 0")
+        if "language_code" not in settings_cols:
+            await db.execute("ALTER TABLE user_settings ADD COLUMN language_code TEXT DEFAULT NULL")
         await db.execute(
             "CREATE TABLE IF NOT EXISTS user_profiles ("
             "user_id INTEGER PRIMARY KEY, "
@@ -155,13 +162,14 @@ async def get_history(user_id: int, days: int = 7) -> list[dict]:
     return [dict(row) for row in rows]
 
 
-_SETTINGS_FIELDS = frozenset({"show_calories", "show_proteins", "show_fats", "show_carbohydrates"})
+_SETTINGS_FIELDS = frozenset({"show_calories", "show_proteins", "show_fats", "show_carbohydrates", "show_reminders"})
 
 _SETTINGS_DEFAULTS = {
     "show_calories": True,
     "show_proteins": True,
     "show_fats": True,
     "show_carbohydrates": True,
+    "show_reminders": False,
 }
 
 
@@ -174,8 +182,17 @@ async def get_user_settings(user_id: int) -> dict:
         ) as cursor:
             row = await cursor.fetchone()
     if row is None:
-        return dict(_SETTINGS_DEFAULTS)
-    return {field: bool(dict(row)[field]) for field in _SETTINGS_FIELDS}
+        result = dict(_SETTINGS_DEFAULTS)
+        result["language_code"] = None
+        return result
+    d = dict(row)
+    result = {field: bool(d[field]) for field in _SETTINGS_FIELDS if field in d}
+    # Backfill defaults for columns added by migration
+    for field, default in _SETTINGS_DEFAULTS.items():
+        if field not in result:
+            result[field] = default
+    result["language_code"] = d.get("language_code")
+    return result
 
 
 async def toggle_setting(user_id: int, field: str) -> bool:
@@ -240,3 +257,25 @@ async def get_user_profile(user_id: int) -> dict | None:
         ) as cursor:
             row = await cursor.fetchone()
     return dict(row) if row else None
+
+
+async def update_language(user_id: int, language_code: str) -> None:
+    """Store the user's Telegram language_code in settings (upsert)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO user_settings (user_id, language_code) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET language_code = excluded.language_code",
+            (user_id, language_code),
+        )
+        await db.commit()
+
+
+async def get_reminder_users() -> list[dict]:
+    """Return user_id and language_code for all users with reminders enabled."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT user_id, language_code FROM user_settings WHERE show_reminders = 1"
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(row) for row in rows]

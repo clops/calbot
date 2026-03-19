@@ -24,6 +24,7 @@ _SETTING_LABELS = {
     "show_proteins": "label_proteins",
     "show_fats": "label_fats",
     "show_carbohydrates": "label_carbs",
+    "show_reminders": "label_reminders",
 }
 
 
@@ -105,6 +106,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user_id = update.effective_user.id
     text = update.message.text
     lang = _lang(update)
+    if lang:
+        await database.update_language(user_id, lang)
     logger.info("Text from user %d: %s", user_id, text)
 
     if len(text) > MAX_TEXT_LENGTH:
@@ -150,6 +153,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """Handle a food photo, optionally with a caption."""
     user_id = update.effective_user.id
     lang = _lang(update)
+    if lang:
+        await database.update_language(user_id, lang)
     logger.info("Photo from user %d", user_id)
 
     await update.message.reply_text(t("analysing_photo", lang))
