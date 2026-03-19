@@ -9,31 +9,7 @@ from handlers.profile import (
     cmd_profile, receive_weight, receive_height, receive_age,
     receive_sex, receive_activity, receive_goal, cancel_profile,
 )
-
-
-def _make_update(text=None, user_id=1):
-    update = MagicMock()
-    update.effective_user.id = user_id
-    update.message.text = text
-    update.message.reply_text = AsyncMock()
-    return update
-
-
-def _make_context():
-    ctx = MagicMock()
-    ctx.user_data = {}
-    return ctx
-
-
-def _make_callback_update(data, user_id=1):
-    query = AsyncMock()
-    query.data = data
-    query.from_user.id = user_id
-    query.answer = AsyncMock()
-    query.edit_message_text = AsyncMock()
-    update = MagicMock()
-    update.callback_query = query
-    return update
+from tests.conftest import make_update, make_context, make_callback_update
 
 
 # ---------------------------------------------------------------------------
@@ -42,8 +18,8 @@ def _make_callback_update(data, user_id=1):
 
 class TestCmdProfile:
     async def test_asks_for_weight(self):
-        update = _make_update()
-        result = await cmd_profile(update, _make_context())
+        update = make_update()
+        result = await cmd_profile(update, make_context())
         assert result == WEIGHT
         reply = update.message.reply_text.call_args.args[0]
         assert "weight" in reply.lower()
@@ -55,49 +31,49 @@ class TestCmdProfile:
 
 class TestReceiveWeight:
     async def test_valid_weight(self):
-        ctx = _make_context()
-        result = await receive_weight(_make_update(text="85"), ctx)
+        ctx = make_context()
+        result = await receive_weight(make_update(text="85"), ctx)
         assert result == HEIGHT
         assert ctx.user_data["profile_weight"] == 85.0
 
     async def test_decimal_comma(self):
-        ctx = _make_context()
-        result = await receive_weight(_make_update(text="85,5"), ctx)
+        ctx = make_context()
+        result = await receive_weight(make_update(text="85,5"), ctx)
         assert result == HEIGHT
         assert ctx.user_data["profile_weight"] == 85.5
 
     async def test_invalid_weight_reprompts(self):
-        update = _make_update(text="abc")
-        result = await receive_weight(update, _make_context())
+        update = make_update(text="abc")
+        result = await receive_weight(update, make_context())
         assert result == WEIGHT
 
     async def test_out_of_range_reprompts(self):
-        update = _make_update(text="5")
-        result = await receive_weight(update, _make_context())
+        update = make_update(text="5")
+        result = await receive_weight(update, make_context())
         assert result == WEIGHT
 
 
 class TestReceiveHeight:
     async def test_valid_height(self):
-        ctx = _make_context()
-        result = await receive_height(_make_update(text="180"), ctx)
+        ctx = make_context()
+        result = await receive_height(make_update(text="180"), ctx)
         assert result == AGE
         assert ctx.user_data["profile_height"] == 180.0
 
     async def test_invalid_height_reprompts(self):
-        result = await receive_height(_make_update(text="50"), _make_context())
+        result = await receive_height(make_update(text="50"), make_context())
         assert result == HEIGHT
 
 
 class TestReceiveAge:
     async def test_valid_age(self):
-        ctx = _make_context()
-        result = await receive_age(_make_update(text="30"), ctx)
+        ctx = make_context()
+        result = await receive_age(make_update(text="30"), ctx)
         assert result == SEX
         assert ctx.user_data["profile_age"] == 30
 
     async def test_invalid_age_reprompts(self):
-        result = await receive_age(_make_update(text="5"), _make_context())
+        result = await receive_age(make_update(text="5"), make_context())
         assert result == AGE
 
 
@@ -107,8 +83,8 @@ class TestReceiveAge:
 
 class TestReceiveSex:
     async def test_stores_sex_and_asks_activity(self):
-        ctx = _make_context()
-        update = _make_callback_update("profile_sex:male")
+        ctx = make_context()
+        update = make_callback_update("profile_sex:male")
         result = await receive_sex(update, ctx)
         assert result == ACTIVITY
         assert ctx.user_data["profile_sex"] == "male"
@@ -117,8 +93,8 @@ class TestReceiveSex:
 
 class TestReceiveActivity:
     async def test_stores_activity_and_asks_goal(self):
-        ctx = _make_context()
-        update = _make_callback_update("profile_activity:moderate")
+        ctx = make_context()
+        update = make_callback_update("profile_activity:moderate")
         result = await receive_activity(update, ctx)
         assert result == GOAL
         assert ctx.user_data["profile_activity"] == "moderate"
@@ -126,7 +102,7 @@ class TestReceiveActivity:
 
 class TestReceiveGoal:
     async def test_saves_profile_and_ends(self):
-        ctx = _make_context()
+        ctx = make_context()
         ctx.user_data.update({
             "profile_weight": 80.0,
             "profile_height": 180.0,
@@ -134,7 +110,7 @@ class TestReceiveGoal:
             "profile_sex": "male",
             "profile_activity": "moderate",
         })
-        update = _make_callback_update("profile_goal:maintain")
+        update = make_callback_update("profile_goal:maintain")
 
         with (
             patch("handlers.profile.database.save_user_profile", new_callable=AsyncMock) as save,
@@ -160,9 +136,9 @@ class TestReceiveGoal:
 class TestCancelProfile:
     async def test_cancel_ends_conversation(self):
         from telegram.ext import ConversationHandler
-        ctx = _make_context()
+        ctx = make_context()
         ctx.user_data["profile_weight"] = 80.0
-        update = _make_update()
+        update = make_update()
         result = await cancel_profile(update, ctx)
         assert result == ConversationHandler.END
         assert "profile_weight" not in ctx.user_data

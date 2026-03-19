@@ -14,6 +14,7 @@ from telegram.ext import (
 
 from services import database
 from services.nutrition import calculate_targets
+from utils.helpers import get_user_lang
 from utils.i18n import t
 
 logger = logging.getLogger(__name__)
@@ -26,12 +27,6 @@ _PROFILE_KEYS = (
 )
 
 
-def _lang(update: Update) -> str | None:
-    if update.effective_user:
-        return update.effective_user.language_code
-    return None
-
-
 def _clear_profile_data(context: ContextTypes.DEFAULT_TYPE) -> None:
     for key in _PROFILE_KEYS:
         context.user_data.pop(key, None)
@@ -39,12 +34,12 @@ def _clear_profile_data(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Entry point: start the profile setup flow."""
-    await update.message.reply_text(t("profile_weight", _lang(update)))
+    await update.message.reply_text(t("profile_weight", get_user_lang(update)))
     return WEIGHT
 
 
 async def receive_weight(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = _lang(update)
+    lang = get_user_lang(update)
     try:
         weight = float(update.message.text.replace(",", "."))
         if not 30 <= weight <= 300:
@@ -59,7 +54,7 @@ async def receive_weight(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def receive_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = _lang(update)
+    lang = get_user_lang(update)
     try:
         height = float(update.message.text.replace(",", "."))
         if not 100 <= height <= 250:
@@ -74,7 +69,7 @@ async def receive_height(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def receive_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    lang = _lang(update)
+    lang = get_user_lang(update)
     try:
         age = int(update.message.text)
         if not 10 <= age <= 120:
@@ -95,7 +90,7 @@ async def receive_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 async def receive_sex(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    lang = _lang(update)
+    lang = get_user_lang(update)
 
     sex = query.data.removeprefix("profile_sex:")
     context.user_data["profile_sex"] = sex
@@ -113,7 +108,7 @@ async def receive_sex(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 async def receive_activity(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    lang = _lang(update)
+    lang = get_user_lang(update)
 
     activity = query.data.removeprefix("profile_activity:")
     context.user_data["profile_activity"] = activity
@@ -130,7 +125,7 @@ async def receive_activity(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def receive_goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    lang = _lang(update)
+    lang = get_user_lang(update)
 
     goal = query.data.removeprefix("profile_goal:")
     user_id = query.from_user.id
@@ -170,7 +165,7 @@ async def receive_goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def cancel_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancel the profile setup flow."""
     _clear_profile_data(context)
-    await update.message.reply_text(t("profile_cancelled", _lang(update)))
+    await update.message.reply_text(t("profile_cancelled", get_user_lang(update)))
     return ConversationHandler.END
 
 

@@ -200,3 +200,111 @@ def test_parse_response_macros_present():
     assert result.proteins_g == 31
     assert result.fats_g == 4
     assert result.carbohydrates_g == 0
+
+
+# ---------------------------------------------------------------------------
+# _parse_response — malformed JSON handling
+# ---------------------------------------------------------------------------
+
+def test_parse_response_malformed_json_returns_clarifying_question():
+    from services.claude import _parse_response
+    result = _parse_response("This is not JSON at all")
+    assert result.clarifying_question is not None
+    assert "try again" in result.clarifying_question.lower()
+    assert result.calories_estimate is None
+    assert result.food_items == []
+    assert result.confidence == 0.0
+
+
+def test_parse_response_partial_json_returns_clarifying_question():
+    from services.claude import _parse_response
+    result = _parse_response('{"food_items": ["apple"')
+    assert result.clarifying_question is not None
+
+
+# ---------------------------------------------------------------------------
+# _get_language_name
+# ---------------------------------------------------------------------------
+
+def test_get_language_name_english():
+    from services.claude import _get_language_name
+    assert _get_language_name("en") == "English"
+
+
+def test_get_language_name_german():
+    from services.claude import _get_language_name
+    assert _get_language_name("de") == "German"
+
+
+def test_get_language_name_russian():
+    from services.claude import _get_language_name
+    assert _get_language_name("ru") == "Russian"
+
+
+def test_get_language_name_with_region():
+    from services.claude import _get_language_name
+    assert _get_language_name("de-AT") == "German"
+
+
+def test_get_language_name_none_defaults_english():
+    from services.claude import _get_language_name
+    assert _get_language_name(None) == "English"
+
+
+def test_get_language_name_unsupported_defaults_english():
+    from services.claude import _get_language_name
+    assert _get_language_name("fr") == "English"
+
+
+# ---------------------------------------------------------------------------
+# generate_nudge
+# ---------------------------------------------------------------------------
+
+async def test_generate_nudge_returns_string(mock_create):
+    content_block = MagicMock()
+    content_block.text = "Don't forget to log your meals! 🍽️"
+    response = MagicMock()
+    response.content = [content_block]
+    mock_create.return_value = response
+
+    from services.claude import generate_nudge
+    result = await generate_nudge(language_code="en")
+    assert isinstance(result, str)
+    assert len(result) > 0
+
+
+async def test_generate_nudge_passes_language(mock_create):
+    content_block = MagicMock()
+    content_block.text = "Vergiss nicht, dein Essen zu loggen! 🍽️"
+    response = MagicMock()
+    response.content = [content_block]
+    mock_create.return_value = response
+
+    from services.claude import generate_nudge
+    await generate_nudge(language_code="de")
+
+    call_kwargs = mock_create.call_args.kwargs
+    assert "German" in call_kwargs["system"]
+
+
+# ---------------------------------------------------------------------------
+# _ensure_conversation
+# ---------------------------------------------------------------------------
+
+def test_ensure_conversation_creates_empty_list():
+    from services.claude import _ensure_conversation
+    _ensure_conversation(9999)
+    assert claude_service._conversations[9999] == []
+
+
+def test_ensure_conversation_stores_language():
+    from services.claude import _ensure_conversation
+    _ensure_conversation(9998, "de")
+    assert claude_service._user_languages[9998] == "de"
+
+
+def test_ensure_conversation_does_not_overwrite_existing():
+    from services.claude import _ensure_conversation
+    claude_service._conversations[9997] = [{"role": "user", "content": "hello"}]
+    _ensure_conversation(9997)
+    assert len(claude_service._conversations[9997]) == 1

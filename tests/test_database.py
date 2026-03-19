@@ -291,3 +291,51 @@ async def test_save_user_profile_upserts(tmp_db):
     assert profile["weight_kg"] == 85.0
     assert profile["target_calories"] == 2700
     assert profile["goal"] == "gain"
+
+
+# ---------------------------------------------------------------------------
+# update_language
+# ---------------------------------------------------------------------------
+
+async def test_update_language_stores_code(tmp_db):
+    await db_service.init_db()
+    await db_service.update_language(1, "de")
+    settings = await db_service.get_user_settings(1)
+    assert settings["language_code"] == "de"
+
+
+async def test_update_language_upserts(tmp_db):
+    await db_service.init_db()
+    await db_service.update_language(1, "de")
+    await db_service.update_language(1, "ru")
+    settings = await db_service.get_user_settings(1)
+    assert settings["language_code"] == "ru"
+
+
+# ---------------------------------------------------------------------------
+# get_reminder_users
+# ---------------------------------------------------------------------------
+
+async def test_get_reminder_users_empty_by_default(tmp_db):
+    await db_service.init_db()
+    users = await db_service.get_reminder_users()
+    assert users == []
+
+
+async def test_get_reminder_users_returns_enabled(tmp_db):
+    await db_service.init_db()
+    await db_service.toggle_setting(1, "show_reminders")
+    await db_service.update_language(1, "en")
+    users = await db_service.get_reminder_users()
+    assert len(users) == 1
+    assert users[0]["user_id"] == 1
+    assert users[0]["language_code"] == "en"
+
+
+async def test_get_reminder_users_excludes_disabled(tmp_db):
+    await db_service.init_db()
+    # Enable then disable
+    await db_service.toggle_setting(1, "show_reminders")
+    await db_service.toggle_setting(1, "show_reminders")
+    users = await db_service.get_reminder_users()
+    assert users == []

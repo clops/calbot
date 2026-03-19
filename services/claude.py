@@ -8,11 +8,14 @@ conversation history is sent again so Claude has context.
 """
 
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass
 
 from anthropic import AsyncAnthropic
+
+logger = logging.getLogger(__name__)
 
 # Lazy-initialised so the module can be imported in tests without a valid key.
 _client: AsyncAnthropic | None = None
@@ -59,9 +62,22 @@ def _parse_response(text: str) -> CalorieEstimate:
     """Parse Claude's JSON response into a CalorieEstimate.
 
     Strips markdown code fences defensively in case Claude ignores the prompt.
+    Returns a clarifying-question estimate on malformed JSON instead of crashing.
     """
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
-    data = json.loads(cleaned)
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        logger.warning("Malformed JSON from Claude: %s", text[:200])
+        return CalorieEstimate(
+            food_items=[],
+            calories_estimate=None,
+            proteins_g=None,
+            fats_g=None,
+            carbohydrates_g=None,
+            confidence=0.0,
+            clarifying_question="Sorry, I couldn't process that. Please try again.",
+        )
     raw_calories = data.get("calories_estimate")
 
     def _to_int(val):
@@ -108,6 +124,14 @@ async def _call_claude(user_id: int) -> CalorieEstimate:
     return _parse_response(reply_text)
 
 
+def _ensure_conversation(user_id: int, language_code: str | None = None) -> None:
+    """Initialise conversation state for a user if needed."""
+    if user_id not in _conversations:
+        _conversations[user_id] = []
+    if language_code is not None:
+        _user_languages[user_id] = language_code
+
+
 async def estimate_from_text(user_id: int, text: str, language_code: str | None = None) -> CalorieEstimate:
     """Estimate calories from a text food description.
 
@@ -122,10 +146,7 @@ async def estimate_from_text(user_id: int, text: str, language_code: str | None 
     Returns:
         CalorieEstimate — check clarifying_question before logging.
     """
-    if user_id not in _conversations:
-        _conversations[user_id] = []
-    if language_code is not None:
-        _user_languages[user_id] = language_code
+    _ensure_conversation(user_id, language_code)
     _conversations[user_id].append({"role": "user", "content": text})
     return await _call_claude(user_id)
 
@@ -159,10 +180,7 @@ async def estimate_from_photo(
     else:
         content.append({"type": "text", "text": "Analyse this image. If it shows a nutrition label or packaging, read the values from it. Otherwise, estimate the calories and macros of the food shown."})
 
-    if user_id not in _conversations:
-        _conversations[user_id] = []
-    if language_code is not None:
-        _user_languages[user_id] = language_code
+    _ensure_conversation(user_id, language_code)
     _conversations[user_id].append({"role": "user", "content": content})
     return await _call_claude(user_id)
 

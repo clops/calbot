@@ -12,6 +12,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from services import claude, database
+from utils.helpers import get_user_lang
 from utils.i18n import t
 from utils.photos import photo_to_base64
 
@@ -26,13 +27,6 @@ _SETTING_LABELS = {
     "show_carbohydrates": "label_carbs",
     "show_reminders": "label_reminders",
 }
-
-
-def _lang(update: Update) -> str | None:
-    """Extract the user's Telegram language_code."""
-    if update.effective_user:
-        return update.effective_user.language_code
-    return None
 
 
 def _format_nutrition(calories, proteins, fats, carbs, settings=None):
@@ -101,11 +95,52 @@ def _format_totals_with_targets(total_cal, total_p, total_f, total_c, profile, s
     return "\n".join(lines)
 
 
+def _sum_macros(meals: list[dict]) -> tuple[int, int | None, int | None, int | None]:
+    """Sum calories and macros from a list of meal dicts.
+
+    Returns (total_cal, total_proteins, total_fats, total_carbs).
+    Macro totals are None when no meal has macro data.
+    """
+    total_cal = sum(m["calories"] for m in meals)
+    has_macros = any(m.get("proteins") is not None for m in meals)
+    total_p = sum(m.get("proteins") or 0 for m in meals) if has_macros else None
+    total_f = sum(m.get("fats") or 0 for m in meals) if has_macros else None
+    total_c = sum(m.get("carbohydrates") or 0 for m in meals) if has_macros else None
+    return total_cal, total_p, total_f, total_c
+
+
+async def _process_estimate(update, user_id, estimate, input_type, fallback_desc, lang):
+    """Shared post-estimation logic for text and photo handlers."""
+    if estimate.clarifying_question:
+        await update.message.reply_text(estimate.clarifying_question)
+        return
+
+    await database.log_meal(
+        user_id=user_id,
+        description=", ".join(estimate.food_items) or fallback_desc,
+        calories=estimate.calories_estimate,
+        input_type=input_type,
+        proteins=estimate.proteins_g,
+        fats=estimate.fats_g,
+        carbohydrates=estimate.carbohydrates_g,
+    )
+    claude.clear_conversation(user_id)
+
+    settings = await database.get_user_settings(user_id)
+    nutrition = _format_nutrition(
+        estimate.calories_estimate, estimate.proteins_g,
+        estimate.fats_g, estimate.carbohydrates_g, settings,
+    )
+    suffix = f" — {nutrition}" if nutrition else ""
+    items = ", ".join(estimate.food_items)
+    await update.message.reply_text(t("logged", lang, items=items, suffix=suffix))
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle a text food description or a reply to a clarifying question."""
     user_id = update.effective_user.id
     text = update.message.text
-    lang = _lang(update)
+    lang = get_user_lang(update)
     if lang:
         await database.update_language(user_id, lang)
     logger.info("Text from user %d: %s", user_id, text)
@@ -124,35 +159,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(t("error", lang))
         return
 
-    if estimate.clarifying_question:
-        await update.message.reply_text(estimate.clarifying_question)
-        return
-
-    await database.log_meal(
-        user_id=user_id,
-        description=", ".join(estimate.food_items) or text,
-        calories=estimate.calories_estimate,
-        input_type="text",
-        proteins=estimate.proteins_g,
-        fats=estimate.fats_g,
-        carbohydrates=estimate.carbohydrates_g,
-    )
-    claude.clear_conversation(user_id)
-
-    settings = await database.get_user_settings(user_id)
-    nutrition = _format_nutrition(
-        estimate.calories_estimate, estimate.proteins_g,
-        estimate.fats_g, estimate.carbohydrates_g, settings,
-    )
-    suffix = f" — {nutrition}" if nutrition else ""
-    items = ", ".join(estimate.food_items)
-    await update.message.reply_text(t("logged", lang, items=items, suffix=suffix))
+    await _process_estimate(update, user_id, estimate, "text", text, lang)
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle a food photo, optionally with a caption."""
     user_id = update.effective_user.id
-    lang = _lang(update)
+    lang = get_user_lang(update)
     if lang:
         await database.update_language(user_id, lang)
     logger.info("Photo from user %d", user_id)
@@ -171,35 +184,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(t("error", lang))
         return
 
-    if estimate.clarifying_question:
-        await update.message.reply_text(estimate.clarifying_question)
-        return
-
-    await database.log_meal(
-        user_id=user_id,
-        description=", ".join(estimate.food_items) or "photo",
-        calories=estimate.calories_estimate,
-        input_type="photo",
-        proteins=estimate.proteins_g,
-        fats=estimate.fats_g,
-        carbohydrates=estimate.carbohydrates_g,
-    )
-    claude.clear_conversation(user_id)
-
-    settings = await database.get_user_settings(user_id)
-    nutrition = _format_nutrition(
-        estimate.calories_estimate, estimate.proteins_g,
-        estimate.fats_g, estimate.carbohydrates_g, settings,
-    )
-    suffix = f" — {nutrition}" if nutrition else ""
-    items = ", ".join(estimate.food_items)
-    await update.message.reply_text(t("logged", lang, items=items, suffix=suffix))
+    await _process_estimate(update, user_id, estimate, "photo", "photo", lang)
 
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Abort any in-progress clarifying question exchange."""
     user_id = update.effective_user.id
-    lang = _lang(update)
+    lang = get_user_lang(update)
     if claude.has_active_conversation(user_id):
         claude.clear_conversation(user_id)
         await update.message.reply_text(t("cancelled", lang))
@@ -210,7 +201,7 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def cmd_undo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Delete the last logged meal and confirm to the user."""
     user_id = update.effective_user.id
-    lang = _lang(update)
+    lang = get_user_lang(update)
     meal = await database.delete_last_meal(user_id)
     if meal is None:
         await update.message.reply_text(t("nothing_to_undo", lang))
@@ -223,7 +214,7 @@ async def cmd_undo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Reply with today's calorie total and meal list."""
     user_id = update.effective_user.id
-    lang = _lang(update)
+    lang = get_user_lang(update)
     meals = await database.get_today(user_id)
 
     if not meals:
@@ -241,11 +232,7 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         suffix = f" — {nutrition}" if nutrition else ""
         meal_lines.append(f"• {m['description']}{suffix}")
 
-    total_cal = sum(m["calories"] for m in meals)
-    has_macros = any(m.get("proteins") is not None for m in meals)
-    total_p = sum(m.get("proteins") or 0 for m in meals) if has_macros else None
-    total_f = sum(m.get("fats") or 0 for m in meals) if has_macros else None
-    total_c = sum(m.get("carbohydrates") or 0 for m in meals) if has_macros else None
+    total_cal, total_p, total_f, total_c = _sum_macros(meals)
 
     profile = await database.get_user_profile(user_id)
     if profile:
@@ -263,7 +250,7 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Reply with a 7-day calorie summary grouped by date."""
     user_id = update.effective_user.id
-    lang = _lang(update)
+    lang = get_user_lang(update)
     meals = await database.get_history(user_id, days=7)
 
     if not meals:
@@ -274,24 +261,14 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     profile = await database.get_user_profile(user_id)
 
     # Group by date (first 10 chars of ISO timestamp)
-    by_date: dict[str, dict] = {}
+    by_date: dict[str, list[dict]] = {}
     for m in meals:
         date = m["timestamp"][:10]
-        if date not in by_date:
-            by_date[date] = {"calories": 0, "proteins": 0, "fats": 0, "carbohydrates": 0, "has_macros": False}
-        by_date[date]["calories"] += m["calories"]
-        if m.get("proteins") is not None:
-            by_date[date]["has_macros"] = True
-            by_date[date]["proteins"] += m.get("proteins") or 0
-            by_date[date]["fats"] += m.get("fats") or 0
-            by_date[date]["carbohydrates"] += m.get("carbohydrates") or 0
+        by_date.setdefault(date, []).append(m)
 
     lines = []
-    for date, totals in sorted(by_date.items()):
-        cal = totals["calories"]
-        p = totals["proteins"] if totals["has_macros"] else None
-        f_ = totals["fats"] if totals["has_macros"] else None
-        c = totals["carbohydrates"] if totals["has_macros"] else None
+    for date, day_meals in sorted(by_date.items()):
+        cal, p, f_, c = _sum_macros(day_meals)
 
         if profile:
             tc = profile["target_calories"]
@@ -312,7 +289,7 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show display settings with toggle buttons."""
     user_id = update.effective_user.id
-    lang = _lang(update)
+    lang = get_user_lang(update)
     settings = await database.get_user_settings(user_id)
     await update.message.reply_text(
         t("settings_header", lang),
@@ -328,9 +305,7 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     field = query.data.removeprefix("toggle:")
     user_id = query.from_user.id
-    lang = None
-    if update.effective_user:
-        lang = update.effective_user.language_code
+    lang = get_user_lang(update)
 
     try:
         await database.toggle_setting(user_id, field)
