@@ -16,11 +16,11 @@ _STRINGS: dict[str, dict[str, str]] = {
     # --- /start & /help ---
     "welcome": {
         "en": (
-            "👋 Hi! I'm your personal calorie tracker.\n\n"
+            "👋 Hi! I'm your personal nutrition tracker.\n\n"
             "Just send me:\n"
             "• 📸 A photo of your food\n"
             "• ✍️ A text description of what you ate\n\n"
-            "I'll estimate the calories and log them for you.\n\n"
+            "I'll estimate the nutrients and log them for you.\n\n"
             "Commands:\n"
             "/today — see today's total\n"
             "/history — last 7 days\n"
@@ -31,11 +31,11 @@ _STRINGS: dict[str, dict[str, str]] = {
             "/help — show this message"
         ),
         "de": (
-            "👋 Hallo! Ich bin dein persönlicher Kalorientracker.\n\n"
+            "👋 Hallo! Ich bin dein persönlicher Ernährungstracker.\n\n"
             "Schick mir einfach:\n"
             "• 📸 Ein Foto deines Essens\n"
             "• ✍️ Eine Beschreibung, was du gegessen hast\n\n"
-            "Ich schätze die Kalorien und logge sie für dich.\n\n"
+            "Ich schätze die Nährwerte und logge sie für dich.\n\n"
             "Befehle:\n"
             "/today — heutige Übersicht\n"
             "/history — letzte 7 Tage\n"
@@ -46,11 +46,11 @@ _STRINGS: dict[str, dict[str, str]] = {
             "/help — diese Nachricht anzeigen"
         ),
         "ru": (
-            "👋 Привет! Я твой персональный трекер калорий.\n\n"
+            "👋 Привет! Я твой персональный трекер питания.\n\n"
             "Просто отправь мне:\n"
             "• 📸 Фото еды\n"
             "• ✍️ Текстовое описание того, что ты съел(а)\n\n"
-            "Я оценю калории и запишу их.\n\n"
+            "Я оценю нутриенты и запишу их.\n\n"
             "Команды:\n"
             "/today — итоги за сегодня\n"
             "/history — последние 7 дней\n"
@@ -69,9 +69,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ru": "Сообщение слишком длинное — не более {limit} символов.",
     },
     "estimating": {
-        "en": "⏳ Estimating calories...",
-        "de": "⏳ Kalorien werden geschätzt…",
-        "ru": "⏳ Оцениваю калории…",
+        "en": "⏳ Estimating nutrients...",
+        "de": "⏳ Nährwerte werden geschätzt…",
+        "ru": "⏳ Оцениваю нутриенты…",
     },
     "error": {
         "en": "Something went wrong — please try again.",
