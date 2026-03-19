@@ -240,8 +240,10 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             m["calories"], m.get("proteins"), m.get("fats"),
             m.get("carbohydrates"), settings, lang,
         )
-        suffix = f" — {nutrition}" if nutrition else ""
-        meal_lines.append(f"• {m['description']}{suffix}")
+        line = f"• {m['description']}"
+        if nutrition:
+            line += f"\n    {nutrition}"
+        meal_lines.append(line)
 
     total_cal, total_p, total_f, total_c = _sum_macros(meals)
 
