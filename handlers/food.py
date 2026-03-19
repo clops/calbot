@@ -40,12 +40,13 @@ def _format_nutrition(calories, proteins, fats, carbs, settings=None, lang=None)
         parts.append(f"~{calories} kcal")
     if proteins is not None:
         lp, lf, lc = t("macro_p", lang), t("macro_f", lang), t("macro_c", lang)
+        g = t("unit_g", lang)
         if settings.get("show_proteins", True):
-            parts.append(f"{lp}: {proteins}g")
+            parts.append(f"{lp}: {proteins}{g}")
         if settings.get("show_fats", True):
-            parts.append(f"{lf}: {fats}g")
+            parts.append(f"{lf}: {fats}{g}")
         if settings.get("show_carbohydrates", True):
-            parts.append(f"{lc}: {carbs}g")
+            parts.append(f"{lc}: {carbs}{g}")
     if not parts:
         return ""
     # Separate calories from macros with a pipe
@@ -91,12 +92,13 @@ def _format_totals_with_targets(total_cal, total_p, total_f, total_c, profile, s
     macro_parts = []
     if total_p is not None:
         lp, lf, lc = t("macro_p", lang), t("macro_f", lang), t("macro_c", lang)
+        g = t("unit_g", lang)
         if settings.get("show_proteins", True):
-            macro_parts.append(f"{lp}: {total_p}/{profile['target_proteins']}g")
+            macro_parts.append(f"{lp}: {total_p}/{profile['target_proteins']}{g}")
         if settings.get("show_fats", True):
-            macro_parts.append(f"{lf}: {total_f}/{profile['target_fats']}g")
+            macro_parts.append(f"{lf}: {total_f}/{profile['target_fats']}{g}")
         if settings.get("show_carbohydrates", True):
-            macro_parts.append(f"{lc}: {total_c}/{profile['target_carbs']}g")
+            macro_parts.append(f"{lc}: {total_c}/{profile['target_carbs']}{g}")
 
     if not parts and not macro_parts:
         return ""

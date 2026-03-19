@@ -156,6 +156,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ru": "У",
     },
 
+    "unit_g": {
+        "en": "g",
+        "de": "g",
+        "ru": "г",
+    },
+
     # --- setting labels ---
     "label_calories": {
         "en": "Calories",
