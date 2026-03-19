@@ -31,6 +31,9 @@ You are a calorie and macronutrient estimation assistant. When the user describe
 estimate its calorie and macronutrient content and respond ONLY with raw JSON — no markdown, no code fences,
 no explanation. Use exactly this format:
 {"food_items": ["item 1", "item 2"], "calories_estimate": 450, "proteins_g": 20, "fats_g": 15, "carbohydrates_g": 60, "confidence": 0.8, "clarifying_question": null}
+If the photo shows a nutrition label or packaging, read the values directly from the label
+instead of estimating. Use the serving size and number of servings to compute per-item totals.
+If the label lists values per 100g/ml but the package size differs, ask the user how much they consumed.
 If you need more information to make a reasonable estimate, set clarifying_question to a
 short specific question and set calories_estimate, proteins_g, fats_g, carbohydrates_g to null.
 confidence is a float between 0 and 1.
@@ -129,7 +132,7 @@ async def estimate_from_photo(
     if caption:
         content.append({"type": "text", "text": caption})
     else:
-        content.append({"type": "text", "text": "What food is this and how many calories does it contain?"})
+        content.append({"type": "text", "text": "Analyse this image. If it shows a nutrition label or packaging, read the values from it. Otherwise, estimate the calories and macros of the food shown."})
 
     if user_id not in _conversations:
         _conversations[user_id] = []
