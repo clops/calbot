@@ -37,21 +37,23 @@ source venv/bin/activate
 pytest
 ```
 
-104 tests, no API keys or network access required (everything is mocked).
+153 tests, no API keys or network access required (everything is mocked).
 
 ## Architecture
 
 ```
 calbot/
-├── main.py                  # entry point: wiring, allowlist, keyboard, polling
+├── main.py                  # entry point: wiring, allowlist, keyboard, polling, daily reminders
 ├── handlers/
-│   └── food.py              # Telegram handlers (text, photo, today, history, cancel, undo, settings)
+│   ├── food.py              # Telegram handlers (text, photo, today, history, cancel, undo, settings)
 │   └── profile.py           # /profile ConversationHandler (guided setup for daily targets)
 ├── services/
-│   ├── claude.py            # Claude API + per-user conversation state
+│   ├── claude.py            # Claude API + per-user conversation state + nudge generation
 │   ├── nutrition.py         # Mifflin-St Jeor daily target calculations (pure functions)
-│   └── database.py          # aiosqlite CRUD (init_db, log_meal, get_today, get_history, delete_last_meal, get_user_settings, toggle_setting, save_user_profile, get_user_profile)
+│   └── database.py          # aiosqlite CRUD (init_db, log_meal, get_today, get_history, delete_last_meal, get_user_settings, toggle_setting, save_user_profile, get_user_profile, get_reminder_users, update_language, set_language)
 └── utils/
+    ├── i18n.py              # translations (EN/DE/RU), t() lookup, macro/unit localisation
+    ├── helpers.py            # shared utilities (language resolution)
     └── photos.py            # Telegram photo download → base64
 ```
 
@@ -62,6 +64,8 @@ calbot/
 - **In-memory conversation state** — `_conversations: dict[int, list[dict]]` in `services/claude.py`; cleared after successful log or `/cancel`
 - **JSON fence stripping** — `_parse_response` strips markdown code fences before `json.loads()`
 - **Model** — `claude-haiku-4-5-20251001` (fast, cheap, sufficient for calorie estimation)
+- **i18n** — `utils/i18n.py` holds all UI strings for EN/DE/RU; language resolved from manual override → Telegram `language_code` → English fallback
+- **Daily reminders** — opt-in per user; `main.py` schedules a job at 20:00 CET that calls `generate_nudge()` in the user's language
 
 ### Claude response format
 ```json
@@ -92,10 +96,13 @@ CREATE TABLE user_settings (
     show_calories        INTEGER NOT NULL DEFAULT 1,
     show_proteins        INTEGER NOT NULL DEFAULT 1,
     show_fats            INTEGER NOT NULL DEFAULT 1,
-    show_carbohydrates   INTEGER NOT NULL DEFAULT 1
+    show_carbohydrates   INTEGER NOT NULL DEFAULT 1,
+    show_reminders       INTEGER NOT NULL DEFAULT 0,
+    language_code        TEXT    DEFAULT NULL,
+    language_manual      INTEGER NOT NULL DEFAULT 0
 );
 ```
-Per-user display preferences. Created by `init_db()`. Row is inserted on first toggle; absent row means all fields shown.
+Per-user display preferences and language. Created by `init_db()`. New columns (`show_reminders`, `language_code`, `language_manual`) are added via `ALTER TABLE` migration. Row is inserted on first toggle; absent row means all fields shown, reminders off, auto-detect language.
 
 ```sql
 CREATE TABLE user_profiles (
@@ -112,7 +119,7 @@ CREATE TABLE user_profiles (
     target_carbs    INTEGER NOT NULL
 );
 ```
-User profile and pre-computed daily targets (Mifflin-St Jeor). Set via `/profile` guided flow. When present, `/today` shows progress fractions (e.g. `540/2200 kcal`).
+User profile and pre-computed daily targets (Mifflin-St Jeor). Set via `/profile` guided flow. When present, `/today` shows progress fractions (e.g. `540/2200 kcal`) and `/history` shows goal icons.
 
 ## Deployment
 
