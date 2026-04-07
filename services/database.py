@@ -285,6 +285,30 @@ async def set_language(user_id: int, language_code: str) -> None:
         await db.commit()
 
 
+async def save_user_aims(
+    user_id: int,
+    target_calories: int,
+    target_proteins: int,
+    target_fats: int,
+    target_carbs: int,
+) -> None:
+    """Insert or update only the daily targets for a user (no biometrics required)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO user_profiles "
+            "(user_id, weight_kg, height_cm, age, sex, activity_level, goal, "
+            "target_calories, target_proteins, target_fats, target_carbs) "
+            "VALUES (?, 0, 0, 0, '', '', '', ?, ?, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET "
+            "target_calories = excluded.target_calories, "
+            "target_proteins = excluded.target_proteins, "
+            "target_fats = excluded.target_fats, "
+            "target_carbs = excluded.target_carbs",
+            (user_id, target_calories, target_proteins, target_fats, target_carbs),
+        )
+        await db.commit()
+
+
 async def get_reminder_users() -> list[dict]:
     """Return user_id and language_code for all users with reminders enabled."""
     async with aiosqlite.connect(DB_PATH) as db:

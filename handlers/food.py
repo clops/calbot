@@ -217,8 +217,14 @@ async def cmd_undo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if meal is None:
         await update.message.reply_text(t("nothing_to_undo", lang))
         return
+    settings = await database.get_user_settings(user_id)
+    nutrition = _format_nutrition(
+        meal["calories"], meal.get("proteins"),
+        meal.get("fats"), meal.get("carbohydrates"), settings, lang,
+    )
+    suffix = f" — {nutrition}" if nutrition else ""
     await update.message.reply_text(
-        t("undo_done", lang, desc=meal["description"], cal=meal["calories"])
+        t("undo_done", lang, desc=meal["description"], suffix=suffix)
     )
 
 

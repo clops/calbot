@@ -28,6 +28,7 @@ _STRINGS: dict[str, dict[str, str]] = {
             "/cancel — cancel a pending question\n"
             "/settings — choose what nutrition info to show\n"
             "/profile — set up your daily nutrition targets\n"
+            "/aims — set daily targets manually\n"
             "/help — show this message"
         ),
         "de": (
@@ -43,6 +44,7 @@ _STRINGS: dict[str, dict[str, str]] = {
             "/cancel — ausstehende Frage abbrechen\n"
             "/settings — Anzeigeoptionen wählen\n"
             "/profile — tägliche Nährwertziele festlegen\n"
+            "/aims — Tagesziele manuell setzen\n"
             "/help — diese Nachricht anzeigen"
         ),
         "ru": (
@@ -58,6 +60,7 @@ _STRINGS: dict[str, dict[str, str]] = {
             "/cancel — отменить текущий вопрос\n"
             "/settings — настроить отображение нутриентов\n"
             "/profile — установить дневные цели\n"
+            "/aims — задать дневные цели вручную\n"
             "/help — показать это сообщение"
         ),
     },
@@ -99,9 +102,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ru": "Нечего отменять.",
     },
     "undo_done": {
-        "en": "↩️ Removed: {desc} — {cal} kcal",
-        "de": "↩️ Entfernt: {desc} — {cal} kcal",
-        "ru": "↩️ Удалено: {desc} — {cal} kcal",
+        "en": "↩️ Removed: {desc}{suffix}",
+        "de": "↩️ Entfernt: {desc}{suffix}",
+        "ru": "↩️ Удалено: {desc}{suffix}",
     },
     "nothing_to_undo": {
         "en": "Nothing to undo — no meals logged yet.",
@@ -290,6 +293,63 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Profile setup cancelled.",
         "de": "Profileinrichtung abgebrochen.",
         "ru": "Настройка профиля отменена.",
+    },
+
+    # --- aims flow ---
+    "aims_calories": {
+        "en": "What is your daily calorie target?",
+        "de": "Wie hoch ist dein tägliches Kalorienziel?",
+        "ru": "Какая у тебя дневная цель по калориям?",
+    },
+    "aims_calories_error": {
+        "en": "Please enter a valid number between 500 and 10000.",
+        "de": "Bitte gib eine gültige Zahl zwischen 500 und 10000 ein.",
+        "ru": "Введи корректное число от 500 до 10000.",
+    },
+    "aims_proteins": {
+        "en": "Target proteins (g)?",
+        "de": "Ziel Proteine (g)?",
+        "ru": "Цель по белкам (г)?",
+    },
+    "aims_proteins_error": {
+        "en": "Please enter a valid number between 0 and 1000.",
+        "de": "Bitte gib eine gültige Zahl zwischen 0 und 1000 ein.",
+        "ru": "Введи корректное число от 0 до 1000.",
+    },
+    "aims_fats": {
+        "en": "Target fats (g)?",
+        "de": "Ziel Fette (g)?",
+        "ru": "Цель по жирам (г)?",
+    },
+    "aims_fats_error": {
+        "en": "Please enter a valid number between 0 and 1000.",
+        "de": "Bitte gib eine gültige Zahl zwischen 0 und 1000 ein.",
+        "ru": "Введи корректное число от 0 до 1000.",
+    },
+    "aims_carbs": {
+        "en": "Target carbs (g)?",
+        "de": "Ziel Kohlenhydrate (g)?",
+        "ru": "Цель по углеводам (г)?",
+    },
+    "aims_carbs_error": {
+        "en": "Please enter a valid number between 0 and 2000.",
+        "de": "Bitte gib eine gültige Zahl zwischen 0 und 2000 ein.",
+        "ru": "Введи корректное число от 0 до 2000.",
+    },
+    "aims_saved": {
+        "en": "✅ Targets saved! Daily aims:\n{targets}",
+        "de": "✅ Ziele gespeichert! Tagesziele:\n{targets}",
+        "ru": "✅ Цели сохранены! Дневные цели:\n{targets}",
+    },
+    "aims_nothing_enabled": {
+        "en": "All nutrients are disabled in /settings — nothing to set.",
+        "de": "Alle Nährwerte sind in /settings deaktiviert — nichts einzustellen.",
+        "ru": "Все нутриенты отключены в /settings — нечего настраивать.",
+    },
+    "aims_cancelled": {
+        "en": "Aims setup cancelled.",
+        "de": "Zieleinrichtung abgebrochen.",
+        "ru": "Установка целей отменена.",
     },
 }
 
