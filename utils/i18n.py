@@ -336,6 +336,11 @@ _STRINGS: dict[str, dict[str, str]] = {
         "de": "Bitte gib eine gültige Zahl zwischen 0 und 2000 ein.",
         "ru": "Введи корректное число от 0 до 2000.",
     },
+    "aims_current": {
+        "en": "current: {value}",
+        "de": "aktuell: {value}",
+        "ru": "сейчас: {value}",
+    },
     "aims_saved": {
         "en": "✅ Targets saved! Daily aims:\n{targets}",
         "de": "✅ Ziele gespeichert! Tagesziele:\n{targets}",

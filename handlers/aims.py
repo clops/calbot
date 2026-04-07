@@ -34,16 +34,31 @@ def _clear_aims_data(context: ContextTypes.DEFAULT_TYPE) -> None:
     for key in _AIMS_KEYS:
         context.user_data.pop(key, None)
     context.user_data.pop("aims_settings", None)
+    context.user_data.pop("aims_current", None)
 
 
 async def _prompt_next_or_save(update, context, after_index):
     """Find the next enabled step after after_index, prompt for it, or save if done."""
     lang = await resolve_language(update)
     settings = context.user_data.get("aims_settings", {})
+    current_aims = context.user_data.get("aims_current", {})
 
-    for state, setting_field, _data_key, prompt_key in _STEPS[after_index:]:
+    # Map data keys to profile fields
+    _PROFILE_FIELD = {
+        "aims_calories": "target_calories",
+        "aims_proteins": "target_proteins",
+        "aims_fats": "target_fats",
+        "aims_carbs": "target_carbs",
+    }
+
+    for state, setting_field, data_key, prompt_key in _STEPS[after_index:]:
         if settings.get(setting_field, True):
-            await update.message.reply_text(t(prompt_key, lang))
+            prompt = t(prompt_key, lang)
+            profile_field = _PROFILE_FIELD[data_key]
+            current_val = current_aims.get(profile_field)
+            if current_val is not None and current_val > 0:
+                prompt += f" ({t('aims_current', lang, value=current_val)})"
+            await update.message.reply_text(prompt)
             return state
 
     # No more steps — save
@@ -90,6 +105,10 @@ async def cmd_aims(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id
     settings = await database.get_user_settings(user_id)
     context.user_data["aims_settings"] = settings
+
+    # Load existing aims so we can show current values in prompts
+    profile = await database.get_user_profile(user_id)
+    context.user_data["aims_current"] = profile or {}
 
     # Check if at least one nutrient is enabled
     has_any = any(

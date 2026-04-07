@@ -54,6 +54,7 @@ def _mock_resolve_language_deps():
     with (
         patch("utils.helpers.database.get_user_settings", new_callable=AsyncMock, return_value=_AUTO_SETTINGS),
         patch("utils.helpers.database.update_language", new_callable=AsyncMock),
+        patch("handlers.aims.database.get_user_profile", new_callable=AsyncMock, return_value=None),
     ):
         yield
 
@@ -80,6 +81,19 @@ class TestCmdAims:
         assert result == AIMS_PROTEINS
         reply = update.message.reply_text.call_args.args[0]
         assert "protein" in reply.lower()
+
+    async def test_shows_current_value_in_prompt(self):
+        update = make_update()
+        ctx = make_context()
+        existing = {"target_calories": 2200, "target_proteins": 150, "target_fats": 70, "target_carbs": 250}
+        with (
+            patch("handlers.aims.database.get_user_settings", new_callable=AsyncMock, return_value=_ALL_SHOWN),
+            patch("handlers.aims.database.get_user_profile", new_callable=AsyncMock, return_value=existing),
+        ):
+            result = await cmd_aims(update, ctx)
+        assert result == AIMS_CALORIES
+        reply = update.message.reply_text.call_args.args[0]
+        assert "2200" in reply
 
     async def test_nothing_enabled_ends(self):
         update = make_update()
