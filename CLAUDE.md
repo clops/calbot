@@ -2,6 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+
 ## Project Overview
 
 **Calbot** is a Telegram calorie and macronutrient tracker bot. Users send food descriptions or photos; the bot estimates calories and macros (protein, fat, carbs) using Claude AI and logs them to SQLite. The bot is running in production on `ether.emind.at`.
